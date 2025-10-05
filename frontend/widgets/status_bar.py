@@ -54,14 +54,64 @@ class StatusBar(Static):
         
         width = self.size.width if self.size.width > 0 else 80
         
-        # Calculate padding to push model to the right
-        # Format: │ status ... model │
-        status_len = len(visible_status) + 2  # +2 for "│ "
-        model_len = len(visible_model) + 2    # +2 for " │"
-        padding = max(1, width - status_len - model_len)
-        
-        # Only add background if theme specifies one
-        if bg_color:
-            return f"[{user_color} on {bg_color}]│ {self.status_text}{' ' * padding}{self.model_text} │[/]"
+        # Split model_text into components if it exists
+        if self.model_text:
+            # Split by the pattern " [dim]│[/dim] " to properly separate sections
+            # This preserves the markup in each section
+            separator_pattern = r'\s*\[dim\]│\[/dim\]\s*'
+            model_parts_markup = re.split(separator_pattern, self.model_text)
+            
+            # Also split visible text for length calculations
+            parts = [p.strip() for p in visible_model.split('│')]
+            model_name = parts[0] if len(parts) > 0 else ""
+            ram_info = parts[1] if len(parts) > 1 else ""
+            vram_info = parts[2] if len(parts) > 2 else ""
+            
+            # Get markup versions
+            model_name_markup = model_parts_markup[0].strip() if len(model_parts_markup) > 0 else ""
+            ram_info_markup = model_parts_markup[1].strip() if len(model_parts_markup) > 1 else ""
+            vram_info_markup = model_parts_markup[2].strip() if len(model_parts_markup) > 2 else ""
+            
+            # Build three lines with status on first line, model/RAM/VRAM stacked on right
+            status_len = len(visible_status) + 2  # +2 for "│ "
+            padding1 = max(1, width - status_len - len(model_name) - 2)
+            padding2 = max(1, width - 2 - len(ram_info) - 2)  # Full width for line 2
+            
+            if bg_color:
+                line1 = f"[{user_color} on {bg_color}]│ {self.status_text}{' ' * padding1}{model_name_markup} │[/]"
+                line2 = f"[{user_color} on {bg_color}]│ {' ' * padding2}{ram_info_markup} │[/]"
+                if vram_info:
+                    padding3 = max(1, width - 2 - len(vram_info) - 2)
+                    line3 = f"[{user_color} on {bg_color}]│ {' ' * padding3}{vram_info_markup} │[/]"
+                    return f"{line1}\n{line2}\n{line3}"
+                else:
+                    # No VRAM, add empty line
+                    line3 = f"[{user_color} on {bg_color}]│ {' ' * (width - 4)} │[/]"
+                    return f"{line1}\n{line2}\n{line3}"
+            else:
+                line1 = f"[{user_color}]│ {self.status_text}{' ' * padding1}{model_name_markup} │[/]"
+                line2 = f"[{user_color}]│ {' ' * padding2}{ram_info_markup} │[/]"
+                if vram_info:
+                    padding3 = max(1, width - 2 - len(vram_info) - 2)
+                    line3 = f"[{user_color}]│ {' ' * padding3}{vram_info_markup} │[/]"
+                    return f"{line1}\n{line2}\n{line3}"
+                else:
+                    # No VRAM, add empty line
+                    line3 = f"[{user_color}]│ {' ' * (width - 4)} │[/]"
+                    return f"{line1}\n{line2}\n{line3}"
         else:
-            return f"[{user_color}]│ {self.status_text}{' ' * padding}{self.model_text} │[/]"
+            # Fallback for when model_text is empty - still need 3 lines
+            status_len = len(visible_status) + 2
+            padding = max(1, width - status_len - 2)
+            empty_padding = max(1, width - 4)
+            
+            if bg_color:
+                line1 = f"[{user_color} on {bg_color}]│ {self.status_text}{' ' * padding} │[/]"
+                line2 = f"[{user_color} on {bg_color}]│ {' ' * empty_padding} │[/]"
+                line3 = f"[{user_color} on {bg_color}]│ {' ' * empty_padding} │[/]"
+                return f"{line1}\n{line2}\n{line3}"
+            else:
+                line1 = f"[{user_color}]│ {self.status_text}{' ' * padding} │[/]"
+                line2 = f"[{user_color}]│ {' ' * empty_padding} │[/]"
+                line3 = f"[{user_color}]│ {' ' * empty_padding} │[/]"
+                return f"{line1}\n{line2}\n{line3}"

@@ -61,7 +61,7 @@ class TuivLLM(App):
     }
     
     #status-bar {
-        height: 1;
+        height: 3;
         width: 100%;
     }
     
