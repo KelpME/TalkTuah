@@ -1,0 +1,56 @@
+services:
+  vllm:
+    image: vllm/vllm-openai:v0.6.3
+    container_name: vllm-server
+    command: >
+      --model ${DEFAULT_MODEL}
+      --host 0.0.0.0
+      --port 8000
+      --dtype float16
+      --max-model-len ${MAX_MODEL_LEN:-4096}
+      --tensor-parallel-size ${TP_SIZE:-1}
+      --gpu-memory-utilization 0.85
+      --max-num-seqs 32
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "curl -sf http://localhost:8000/v1/models >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: vllm-proxy-api
+    environment:
+      - PROXY_API_KEY=${PROXY_API_KEY}
+      - UPSTREAM_BASE_URL=${OPENAI_BASE_URL}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-60}
+    ports:
+      - "8787:8787"
+    depends_on:
+      vllm:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8787/api/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

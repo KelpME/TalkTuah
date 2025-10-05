@@ -1,0 +1,39 @@
+#? Config file for TuivLLM
+#? Copy this to tuivllm.conf and customize
+
+#* Name of a theme file
+#* "system" - automatically use your system's current theme (omarchy/btop)
+#* "terminal" - use ANSI colors that adapt to terminal
+#* Or specify a custom theme file name
+#* Themes should be placed in "~/.config/tuivllm/themes/" or "./themes/"
+color_theme = "system"
+
+#* If the theme set background should be shown, set to False for terminal transparency
+theme_background = True
+
+#* Sets if 24-bit truecolor should be used, will convert to 256 colors if false
+truecolor = True
+
+#* Rounded corners on message boxes
+rounded_corners = True
+
+#* Show timestamps on messages
+show_timestamps = True
+
+#* Timestamp format (strftime format)
+#* Examples: "%H:%M:%S" (24h), "%I:%M:%S %p" (12h), "%Y-%m-%d %H:%M:%S" (with date)
+timestamp_format = "%H:%M:%S"
+
+#* Maximum number of messages to keep in history (0 = unlimited)
+#* Higher values use more memory but preserve more context
+max_history = 100
+
+#* Auto-scroll to bottom when new message arrives
+auto_scroll = True
+
+#* Show connection status in status bar
+show_connection_status = True
+
+#* Enable vim-style keybindings (j/k for scroll, etc)
+#* Note: This feature is planned but not yet implemented
+vim_keys = False

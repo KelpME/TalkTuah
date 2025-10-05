@@ -1,0 +1,6 @@
+textual==0.47.1
+httpx==0.27.2
+rich==13.7.0
+python-dotenv==1.0.1
+watchdog==4.0.0
+psutil==5.9.8

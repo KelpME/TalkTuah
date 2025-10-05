@@ -1,0 +1,36 @@
+# Terminal theme - uses ANSI colors that adapt to your terminal's color scheme
+# This is the default theme that respects your terminal's configured colors
+
+# Main background, empty for terminal default (transparent)
+theme[main_bg]=""
+
+# Main text color (terminal default)
+theme[main_fg]=""
+
+# User message box color (ANSI cyan - adapts to terminal)
+theme[user_color]="cyan"
+
+# AI message box color (ANSI yellow - adapts to terminal)
+theme[ai_color]="yellow"
+
+# System message color (ANSI color for info messages)
+theme[system_color]="bright_black"
+
+# Border colors for containers
+theme[border_color]="cyan"
+
+# Status bar colors
+theme[status_connected]="green"
+theme[status_processing]="yellow"
+theme[status_error]="red"
+
+# Scrollbar colors
+theme[scrollbar_color]="cyan"
+theme[scrollbar_hover]="bright_cyan"
+theme[scrollbar_active]="bright_cyan"
+
+# Input box border
+theme[input_border]="cyan"
+
+# Timestamp color
+theme[timestamp_color]="bright_black"
