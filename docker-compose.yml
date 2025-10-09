@@ -1,22 +1,35 @@
 services:
   vllm:
-    image: vllm/vllm-openai:v0.6.3
+    image: rocm/vllm:latest
     container_name: vllm-server
-    command: >
-      --model ${DEFAULT_MODEL}
-      --host 0.0.0.0
-      --port 8000
-      --dtype float16
-      --max-model-len ${MAX_MODEL_LEN:-4096}
-      --tensor-parallel-size ${TP_SIZE:-1}
-      --gpu-memory-utilization 0.75
-      --max-num-seqs 16
+    command:
+      - vllm
+      - serve
+      - ${DEFAULT_MODEL}
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --dtype
+      - float16
+      - --max-model-len
+      - "${MAX_MODEL_LEN:-4096}"
+      - --tensor-parallel-size
+      - "${TP_SIZE:-1}"
+      - --gpu-memory-utilization
+      - "0.75"
+      - --max-num-seqs
+      - "16"
     environment:
       - HF_TOKEN=${HF_TOKEN}
       - HF_HOME=/workspace/models
-      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+      - HSA_OVERRIDE_GFX_VERSION=11.0.0
+      - ROCM_PATH=/opt/rocm
+      - HIP_VISIBLE_DEVICES=0
     volumes:
       - ./models:/workspace/models
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
     ports:
       - "8000:8000"
     healthcheck:
@@ -25,13 +38,14 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+      - render
+    security_opt:
+      - seccomp:unconfined
     restart: "no"
 
   api:
