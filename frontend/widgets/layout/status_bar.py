@@ -49,7 +49,13 @@ class StatusBar(Static):
         user_color = theme.get_color("user_color", "cyan")
         bg_color = theme.get_color("main_bg", "")
         
-        visible_status = re.sub(r'\[.*?\]', '', self.status_text)
+        # Split status_text by newline if present (for connection + endpoint)
+        status_lines = self.status_text.split('\n')
+        status_line1 = status_lines[0] if len(status_lines) > 0 else ""
+        status_line2 = status_lines[1] if len(status_lines) > 1 else ""
+        
+        visible_status1 = re.sub(r'\[.*?\]', '', status_line1)
+        visible_status2 = re.sub(r'\[.*?\]', '', status_line2)
         visible_model = re.sub(r'\[.*?\]', '', self.model_text)
         
         width = self.size.width if self.size.width > 0 else 80
@@ -72,14 +78,15 @@ class StatusBar(Static):
             ram_info_markup = model_parts_markup[1].strip() if len(model_parts_markup) > 1 else ""
             vram_info_markup = model_parts_markup[2].strip() if len(model_parts_markup) > 2 else ""
             
-            # Build three lines with status on first line, model/RAM/VRAM stacked on right
-            status_len = len(visible_status) + 2  # +2 for "│ "
-            padding1 = max(1, width - status_len - len(model_name) - 2)
-            padding2 = max(1, width - 2 - len(ram_info) - 2)  # Full width for line 2
+            # Build three lines: status line 1 + model, status line 2, RAM/VRAM on right
+            status1_len = len(visible_status1) + 2  # +2 for "│ "
+            status2_len = len(visible_status2) + 2 if visible_status2 else 2
+            padding1 = max(1, width - status1_len - len(model_name) - 2)
+            padding2 = max(1, width - status2_len - len(ram_info) - 2)
             
             if bg_color:
-                line1 = f"[{user_color} on {bg_color}]│ {self.status_text}{' ' * padding1}{model_name_markup} │[/]"
-                line2 = f"[{user_color} on {bg_color}]│ {' ' * padding2}{ram_info_markup} │[/]"
+                line1 = f"[{user_color} on {bg_color}]│ {status_line1}{' ' * padding1}{model_name_markup} │[/]"
+                line2 = f"[{user_color} on {bg_color}]│ {status_line2}{' ' * padding2}{ram_info_markup} │[/]"
                 if vram_info:
                     padding3 = max(1, width - 2 - len(vram_info) - 2)
                     line3 = f"[{user_color} on {bg_color}]│ {' ' * padding3}{vram_info_markup} │[/]"
@@ -89,8 +96,8 @@ class StatusBar(Static):
                     line3 = f"[{user_color} on {bg_color}]│ {' ' * (width - 4)} │[/]"
                     return f"{line1}\n{line2}\n{line3}"
             else:
-                line1 = f"[{user_color}]│ {self.status_text}{' ' * padding1}{model_name_markup} │[/]"
-                line2 = f"[{user_color}]│ {' ' * padding2}{ram_info_markup} │[/]"
+                line1 = f"[{user_color}]│ {status_line1}{' ' * padding1}{model_name_markup} │[/]"
+                line2 = f"[{user_color}]│ {status_line2}{' ' * padding2}{ram_info_markup} │[/]"
                 if vram_info:
                     padding3 = max(1, width - 2 - len(vram_info) - 2)
                     line3 = f"[{user_color}]│ {' ' * padding3}{vram_info_markup} │[/]"
@@ -101,17 +108,19 @@ class StatusBar(Static):
                     return f"{line1}\n{line2}\n{line3}"
         else:
             # Fallback for when model_text is empty - still need 3 lines
-            status_len = len(visible_status) + 2
-            padding = max(1, width - status_len - 2)
+            status1_len = len(visible_status1) + 2
+            status2_len = len(visible_status2) + 2 if visible_status2 else 2
+            padding1 = max(1, width - status1_len - 2)
+            padding2 = max(1, width - status2_len - 2)
             empty_padding = max(1, width - 4)
             
             if bg_color:
-                line1 = f"[{user_color} on {bg_color}]│ {self.status_text}{' ' * padding} │[/]"
-                line2 = f"[{user_color} on {bg_color}]│ {' ' * empty_padding} │[/]"
+                line1 = f"[{user_color} on {bg_color}]│ {status_line1}{' ' * padding1} │[/]"
+                line2 = f"[{user_color} on {bg_color}]│ {status_line2}{' ' * padding2} │[/]" if status_line2 else f"[{user_color} on {bg_color}]│ {' ' * empty_padding} │[/]"
                 line3 = f"[{user_color} on {bg_color}]│ {' ' * empty_padding} │[/]"
                 return f"{line1}\n{line2}\n{line3}"
             else:
-                line1 = f"[{user_color}]│ {self.status_text}{' ' * padding} │[/]"
-                line2 = f"[{user_color}]│ {' ' * empty_padding} │[/]"
+                line1 = f"[{user_color}]│ {status_line1}{' ' * padding1} │[/]"
+                line2 = f"[{user_color}]│ {status_line2}{' ' * padding2} │[/]" if status_line2 else f"[{user_color}]│ {' ' * empty_padding} │[/]"
                 line3 = f"[{user_color}]│ {' ' * empty_padding} │[/]"
                 return f"{line1}\n{line2}\n{line3}"

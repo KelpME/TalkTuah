@@ -9,20 +9,21 @@ services:
       --dtype float16
       --max-model-len ${MAX_MODEL_LEN:-4096}
       --tensor-parallel-size ${TP_SIZE:-1}
-      --gpu-memory-utilization 0.85
-      --max-num-seqs 32
+      --gpu-memory-utilization 0.75
+      --max-num-seqs 16
     environment:
       - HF_TOKEN=${HF_TOKEN}
+      - HF_HOME=/workspace/models
       - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     volumes:
-      - ~/.cache/huggingface:/root/.cache/huggingface
+      - ./models:/workspace/models
     ports:
       - "8000:8000"
     healthcheck:
       test: ["CMD", "bash", "-c", "curl -sf http://localhost:8000/v1/models >/dev/null"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+      interval: 60s
+      timeout: 10s
+      retries: 5
       start_period: 60s
     deploy:
       resources:
@@ -31,7 +32,7 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    restart: unless-stopped
+    restart: "no"
 
   api:
     build:
@@ -43,14 +44,18 @@ services:
       - UPSTREAM_BASE_URL=${OPENAI_BASE_URL}
       - CORS_ORIGINS=${CORS_ORIGINS:-*}
       - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-60}
+      - MODELS_DIR=/workspace/models
     ports:
       - "8787:8787"
+    volumes:
+      - .:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       vllm:
-        condition: service_healthy
-    restart: unless-stopped
+        condition: service_started
+    restart: "no"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8787/api/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 60s
+      timeout: 10s
+      retries: 3

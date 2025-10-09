@@ -1,6 +1,7 @@
 # Environment
 .env
 *.env
+*.env.bak
 !.env.example
 
 # User configuration (don't commit personal configs)
@@ -61,3 +62,8 @@ logs/
 
 # Docker
 # (keep .dockerignore files)
+
+# Models cache
+models/*
+!models/.gitkeep
+!models/README.md

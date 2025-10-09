@@ -116,6 +116,8 @@ class CustomFooter(Horizontal):
         yield FooterSpacer()
         yield KeybindingButton("CTRL+L", "Clear", "clear_chat")
         yield FooterSpacer()
+        yield KeybindingButton("CTRL+S", "Settings", "settings")
+        yield FooterSpacer()
         yield KeybindingButton("CTRL+R", "Reconnect", "reconnect")
         yield FooterEnd()
 

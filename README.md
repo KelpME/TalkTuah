@@ -1,17 +1,17 @@
-# Talk-Tuah 🎤
+# Talk-Tuah
 
 A beautiful terminal UI chatbot with dynamic gradient text and Omarchy theme integration, powered by vLLM.
 
-## ✨ Features
+## Features
 
-- 🎨 **Dynamic Gradient Text** - Stationary gradient that messages scroll through
-- 🎭 **Omarchy Theme Integration** - Automatically syncs with your system theme
-- ⚡ **Real-time Streaming** - Fast SSE-based responses
-- 💾 **System Monitoring** - Live RAM and VRAM usage display
-- 🔧 **vLLM Backend** - High-performance GPU inference
-- 🐳 **Docker Compose** - Easy deployment with GPU support
+- **Dynamic Gradient Text** - Stationary gradient that messages scroll through
+- **Omarchy Theme Integration** - Automatically syncs with your system theme
+- **Real-time Streaming** - Fast SSE-based responses
+- **System Monitoring** - Live RAM and VRAM usage display
+- **vLLM Backend** - High-performance GPU inference
+- **Docker Compose** - Easy deployment with GPU support
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
 # 1. Clone
@@ -31,7 +31,7 @@ make frontend
 
 That's it! The TUI will connect to the vLLM backend and you can start chatting.
 
-## 🎨 Theme System
+## Theme System
 
 Talk-Tuah automatically syncs with your Omarchy theme:
 
@@ -41,21 +41,23 @@ omarchy theme set <theme-name>
 # TUI updates colors in real-time!
 ```
 
-**Gradient Colors:**
-- Top of screen: Red (gradient_top)
-- Middle: Orange (gradient_mid)  
-- Bottom: Green (gradient_bottom)
+**How it works:**
 
-Messages scroll through the stationary gradient for a beautiful effect.
+The gradient uses three colors from your Omarchy theme's `btop.theme` file:
+- **Top of screen** → `theme[gradient_top]` (usually red/orange)
+- **Middle of screen** → `theme[gradient_mid]` (usually teal/cyan)
+- **Bottom of screen** → `theme[gradient_bottom]` (usually green)
 
-## ⌨️ Keyboard Shortcuts
+Messages scroll through this stationary gradient - text changes color based on its position on screen, creating a beautiful flowing effect.
+
+## Keyboard Shortcuts
 
 - `Ctrl+C` / `Ctrl+Q` - Quit
 - `Ctrl+L` - Clear chat
 - `Ctrl+R` - Reconnect to backend
 - `Enter` - Send message
 
-## 📝 Configuration
+## Configuration
 
 Edit `.env` to configure:
 
@@ -70,7 +72,7 @@ PROXY_API_KEY=change-me-hehehoho
 HF_TOKEN=hf_xxxxxxxxxxxxxxxxx
 ```
 
-## 🛠️ Commands
+## Commands
 
 ```bash
 make up           # Start backend
@@ -80,14 +82,14 @@ make frontend     # Run TUI
 make test         # Run tests
 ```
 
-## 📚 Documentation
+## Documentation
 
 - [GPU Setup](docs/GPU_SETUP.md) - NVIDIA GPU configuration
 - [Cheatsheet](docs/CHEATSHEET.md) - All commands and shortcuts
 - [Themes](docs/THEMES.md) - Theme customization guide
 - [Changelog](docs/CHANGELOG.md) - Version history
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 **Backend won't start:**
 ```bash
@@ -104,16 +106,16 @@ nvidia-smi
 curl http://localhost:8787/api/healthz
 ```
 
-## 📦 Requirements
+## Requirements
 
 - Docker & Docker Compose with GPU support
 - NVIDIA GPU with 16GB+ VRAM (for 7B models)
 - NVIDIA Container Toolkit
 - Python 3.11+ (for TUI)
 
-## 📄 License
+## License
 
-MIT
+Apache 2.0
 
 ---
 

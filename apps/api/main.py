@@ -283,8 +283,272 @@ async def root():
         "endpoints": {
             "chat": "/api/chat",
             "models": "/api/models",
+            "model_status": "/api/model-status",
+            "switch_model": "/api/switch-model",
             "health": "/api/healthz",
-            "metrics": "/metrics"
+            "metrics": "/metrics",
+            "download_model": "/api/download-model",
+            "download_progress": "/api/download-progress",
+            "delete_model": "/api/delete-model"
         },
         "docs": "/docs"
     }
+
+
+@app.get("/api/model-status")
+async def model_status(token: str = Depends(verify_token)):
+    """
+    Check if any models are downloaded and available.
+    Returns model availability status.
+    """
+    import os
+    from pathlib import Path
+    
+    models_dir = Path("/workspace/models/hub")
+    
+    if not models_dir.exists():
+        return {
+            "models_available": False,
+            "models_dir_exists": False,
+            "downloaded_models": [],
+            "message": "Models directory not found. Please download a model first."
+        }
+    
+    # Check for downloaded models
+    downloaded_models = []
+    if models_dir.exists():
+        for item in models_dir.iterdir():
+            if item.is_dir() and item.name.startswith("models--"):
+                # Convert models--org--name to org/name
+                model_name = item.name.replace("models--", "").replace("--", "/", 1)
+                downloaded_models.append(model_name)
+    
+    return {
+        "models_available": len(downloaded_models) > 0,
+        "models_dir_exists": True,
+        "downloaded_models": downloaded_models,
+        "message": "Models found" if downloaded_models else "No models downloaded yet"
+    }
+
+
+@app.get("/api/download-progress")
+async def download_progress(token: str = Depends(verify_token)):
+    """Get current download progress"""
+    import os
+    
+    progress_file = "/tmp/model_download_progress.txt"
+    
+    if not os.path.exists(progress_file):
+        return {
+            "status": "idle",
+            "progress": 0,
+            "model": None
+        }
+    
+    try:
+        with open(progress_file, 'r') as f:
+            lines = f.readlines()
+            
+        data = {}
+        for line in lines:
+            if '=' in line:
+                key, value = line.strip().split('=', 1)
+                data[key] = value
+        
+        return {
+            "status": data.get('status', 'unknown'),
+            "progress": int(data.get('progress', 0)),
+            "model": data.get('model'),
+            "error": data.get('error')
+        }
+    except Exception as e:
+        logger.error(f"Failed to read progress: {e}")
+        return {
+            "status": "error",
+            "progress": 0,
+            "model": None,
+            "error": str(e)
+        }
+
+
+@app.post("/api/switch-model")
+async def switch_model(
+    model_id: str,
+    token: str = Depends(verify_token)
+):
+    """
+    Switch to a different downloaded model.
+    Updates .env and restarts vLLM.
+    """
+    import asyncio
+    import os
+    from pathlib import Path
+    
+    try:
+        # Verify model exists
+        cache_dir = Path("/workspace/models/hub")
+        model_dir_name = "models--" + model_id.replace("/", "--")
+        model_path = cache_dir / model_dir_name
+        
+        if not model_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Model not found: {model_id}. Please download it first."
+            )
+        
+        # Update .env file with HuggingFace model name format
+        # vLLM will automatically find the model in the cache using HF_HOME
+        env_path = "/workspace/.env"
+        if os.path.exists(env_path):
+            with open(env_path, 'r') as f:
+                lines = f.readlines()
+            
+            # Update DEFAULT_MODEL line with HuggingFace format (org/model-name)
+            updated = False
+            for i, line in enumerate(lines):
+                if line.startswith('DEFAULT_MODEL='):
+                    lines[i] = f'DEFAULT_MODEL={model_id}\n'
+                    updated = True
+                    break
+            
+            # If not found, append it
+            if not updated:
+                lines.append(f'DEFAULT_MODEL={model_id}\n')
+            
+            with open(env_path, 'w') as f:
+                f.writelines(lines)
+        
+        # Recreate vLLM container to pick up new environment variables
+        logger.info(f"Switching to model: {model_id}")
+        import subprocess
+        import os
+        
+        try:
+            # Use docker API directly instead of docker-compose
+            logger.info("Stopping and recreating vLLM container...")
+            import docker
+            
+            client = docker.from_env()
+            container = client.containers.get("vllm-server")
+            
+            # Stop the container
+            logger.info("Stopping vLLM container...")
+            container.stop(timeout=30)
+            
+            # Remove the container
+            logger.info("Removing vLLM container...")
+            container.remove(force=True)
+            
+            # Recreate using docker-compose (with hyphen)
+            logger.info("Recreating vLLM container with new model...")
+            up_result = subprocess.run(
+                ["docker-compose", "up", "-d", "vllm"],
+                cwd="/workspace",
+                capture_output=True,
+                text=True,
+                timeout=60,
+                env=os.environ.copy()
+            )
+            
+            if up_result.returncode != 0:
+                logger.error(f"docker-compose stdout: {up_result.stdout}")
+                logger.error(f"docker-compose stderr: {up_result.stderr}")
+                raise Exception(f"Docker compose up failed: {up_result.stderr}")
+            
+            logger.info(f"Successfully switched to model: {model_id}")
+                
+        except subprocess.TimeoutExpired:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Docker command timed out. The container may still be restarting."
+            )
+        except Exception as e:
+            logger.error(f"Error during container recreation: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to restart vLLM: {str(e)}"
+            )
+        
+        return {
+            "status": "success",
+            "message": f"Switched to {model_id}",
+            "model_id": model_id,
+            "info": "vLLM is restarting with the new model. This may take 30-60 seconds."
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error switching model: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to switch model: {str(e)}"
+        )
+
+
+@app.post("/api/download-model")
+async def download_model(
+    model_id: str,
+    auto: bool = False,
+    token: str = Depends(verify_token)
+):
+    """
+    Download a model from HuggingFace.
+    
+    If auto=true, triggers automated download and restart.
+    Otherwise, returns instructions.
+    """
+    if auto:
+        # Trigger automated download
+        import subprocess
+        import os
+        
+        script_path = "/workspace/scripts/download_model.sh"
+        
+        # Check if script exists
+        if not os.path.exists(script_path):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Download script not found. Run from host: ./scripts/download_model.sh"
+            )
+        
+        try:
+            # Start download in background
+            subprocess.Popen(
+                [script_path, model_id],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd="/workspace"
+            )
+            
+            return {
+                "status": "downloading",
+                "message": f"Automated download started for {model_id}",
+                "model_id": model_id,
+                "info": "The system will download the model, update config, and restart vLLM automatically."
+            }
+        except Exception as e:
+            logger.error(f"Failed to start automated download: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to start download: {str(e)}"
+            )
+    else:
+        # Return manual instructions
+        download_cmd = f"./scripts/download_model.sh {model_id}"
+        
+        return {
+            "status": "manual",
+            "message": f"Manual download instructions for {model_id}",
+            "model_id": model_id,
+            "command": download_cmd,
+            "instructions": [
+                f"Run this command from the project root:",
+                f"  {download_cmd}",
+                "",
+                "This will:",
+                "  1. Download the model",
+                "  2. Update docker-compose.yml",
+                "  3. Restart vLLM automatically"
+            ]
+        }

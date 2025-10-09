@@ -24,6 +24,8 @@ class ChatRequest(BaseModel):
 
 class HealthResponse(BaseModel):
     """Health check response."""
+    model_config = {"protected_namespaces": ()}
+    
     status: str
     gpu_available: bool
     model_loaded: bool

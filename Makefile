@@ -1,19 +1,24 @@
-.PHONY: help up down logs restart build clean test bench frontend install-frontend
+.PHONY: help setup up down logs restart build clean test bench frontend install-frontend delete-model
 
 help:
 	@echo "vLLM Chat Backend - Available Commands:"
-	@echo "  make up        - Start all services (vLLM + API)"
-	@echo "  make down      - Stop all services"
-	@echo "  make logs      - Follow logs from all services"
-	@echo "  make restart   - Restart all services"
-	@echo "  make build     - Rebuild API service"
-	@echo "  make clean     - Stop and remove all containers, volumes"
-	@echo "  make test      - Run pytest tests"
-	@echo "  make bench     - Run benchmark script"
+	@echo "  make setup        - First-time setup: select default model"
+	@echo "  make up           - Start all services (vLLM + API)"
+	@echo "  make down         - Stop all services"
+	@echo "  make logs         - Follow logs from all services"
+	@echo "  make restart      - Restart all services"
+	@echo "  make build        - Rebuild API service"
+	@echo "  make clean        - Stop and remove all containers, volumes"
+	@echo "  make delete-model - Delete a model (interactive)"
+	@echo "  make test         - Run pytest tests"
+	@echo "  make bench        - Run benchmark script"
 	@echo ""
 	@echo "Frontend Commands:"
 	@echo "  make install-frontend - Install frontend dependencies"
 	@echo "  make frontend         - Run TUI chat interface"
+
+setup:
+	@./scripts/setup_first_model.sh
 
 up:
 	docker compose up -d
@@ -35,6 +40,9 @@ build:
 
 clean:
 	docker compose down -v --remove-orphans
+
+delete-model:
+	@./scripts/delete_model.sh
 
 test:
 	@echo "Running tests..."

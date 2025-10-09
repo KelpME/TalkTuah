@@ -1,12 +1,26 @@
-"""TuivLLM Widget Components"""
+"""TuivLLM Widget Components - Organized by category"""
 
-from .chat_message import ChatMessage
-from .borders import ContainerBorder, SideBorder
-from .status_bar import StatusBar
-from .footer import CustomFooter, KeybindingButton, FooterBorder, FooterEnd, FooterSpacer
+# Chat widgets
+from .chat import ChatMessage
+
+# Layout widgets (borders, footer, status bar)
+from .layout import (
+    ContainerBorder, SideBorder,
+    CustomFooter, KeybindingButton, FooterBorder, FooterEnd, FooterSpacer,
+    StatusBar
+)
+
+# Settings (modal and all settings widgets)
+from .settings import (
+    SettingsModal,
+    TemperatureSlider, TemperatureChanged,
+    ModelManager, ModelDownloadRequested
+)
 
 __all__ = [
+    # Chat
     "ChatMessage",
+    # Layout
     "ContainerBorder",
     "SideBorder",
     "StatusBar",
@@ -15,4 +29,10 @@ __all__ = [
     "FooterBorder",
     "FooterEnd",
     "FooterSpacer",
+    # Settings
+    "SettingsModal",
+    "ModelManager",
+    "ModelDownloadRequested",
+    "TemperatureSlider",
+    "TemperatureChanged",
 ]

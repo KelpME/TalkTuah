@@ -6,20 +6,51 @@ from config import (
     LMSTUDIO_TIMEOUT, LMSTUDIO_MAX_TOKENS, 
     LMSTUDIO_TEMPERATURE, LLM_SYSTEM_PROMPT
 )
+from settings import get_settings
 
 
 class LLMClient:
     """Client for interacting with vLLM Proxy API"""
     
-    def __init__(self, base_url: str = VLLM_API_URL, api_key: str = VLLM_API_KEY):
+    def __init__(self, base_url: str = None, api_key: str = VLLM_API_KEY):
+        # Read endpoint and model from settings if not provided
+        if base_url is None:
+            from settings import get_settings
+            settings = get_settings()
+            base_url = settings.get("endpoint", VLLM_API_URL)
+            # Use selected model from settings, or default from config
+            selected_model = settings.get("selected_model")
+            self.model = selected_model if selected_model else VLLM_MODEL
+        else:
+            self.model = VLLM_MODEL
+        
         self.base_url = base_url
         self.api_key = api_key
-        self.model = VLLM_MODEL
         self.conversation_history: List[Dict[str, str]] = []
         self.system_prompt = LLM_SYSTEM_PROMPT
     
+    async def get_current_model(self) -> str:
+        """Fetch the currently loaded model from the API"""
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(
+                    f"{self.base_url}/models",
+                    headers={"Authorization": f"Bearer {self.api_key}"}
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    models = data.get("data", [])
+                    if models:
+                        return models[0].get("id", self.model)
+        except:
+            pass
+        return self.model
+    
     async def get_response(self, user_message: str, analytics_context: str = "") -> str:
         """Get a response from the LLM"""
+        
+        # Get the current model dynamically
+        current_model = await self.get_current_model()
         
         # Build the messages
         messages = [
@@ -48,9 +79,9 @@ class LLMClient:
                         "Content-Type": "application/json"
                     },
                     json={
-                        "model": self.model,
+                        "model": current_model,
                         "messages": messages,
-                        "temperature": LMSTUDIO_TEMPERATURE,
+                        "temperature": get_settings().get("temperature", LMSTUDIO_TEMPERATURE),
                         "max_tokens": LMSTUDIO_MAX_TOKENS,
                         "stream": False
                     }

@@ -18,7 +18,7 @@ if 'theme_loader' in sys.modules:
     del sys.modules['theme_loader']
 from theme_loader import get_theme_loader, reload_theme
 
-from widgets import ChatMessage, ContainerBorder, SideBorder, StatusBar, CustomFooter, KeybindingButton, FooterBorder, FooterEnd, FooterSpacer
+from widgets import ChatMessage, ContainerBorder, SideBorder, StatusBar, CustomFooter, KeybindingButton, FooterBorder, FooterEnd, FooterSpacer, SettingsModal
 from textual.containers import Horizontal as HorizontalContainer
 
 
@@ -28,15 +28,15 @@ class OmarchyThemeWatcher(FileSystemEventHandler):
         self.app = app
     
     def on_modified(self, event):
-        if 'theme' in event.src_path or 'btop.theme' in event.src_path:
+        if self.app.theme_watcher_enabled and ('theme' in event.src_path or 'btop.theme' in event.src_path):
             self.app.call_from_thread(self.app.reload_theme_colors)
     
     def on_created(self, event):
-        if Path(event.src_path).name == 'theme':
+        if self.app.theme_watcher_enabled and Path(event.src_path).name == 'theme':
             self.app.call_from_thread(self.app.reload_theme_colors)
     
     def on_moved(self, event):
-        if hasattr(event, 'dest_path') and Path(event.dest_path).name == 'theme':
+        if self.app.theme_watcher_enabled and hasattr(event, 'dest_path') and Path(event.dest_path).name == 'theme':
             self.app.call_from_thread(self.app.reload_theme_colors)
 
 
@@ -147,6 +147,7 @@ class TuivLLM(App):
         ("ctrl+c", "quit", "Quit"),
         ("ctrl+q", "quit", "Quit"),
         ("ctrl+l", "clear_chat", "Clear"),
+        ("ctrl+s", "settings", "Settings"),
         ("ctrl+r", "reconnect", "Reconnect"),
     ]
     
@@ -157,6 +158,10 @@ class TuivLLM(App):
         self.llm_client = LLMClient()
         self.is_processing = False
         self.theme_observer = None
+        self.current_theme = "system"  # Default to Omarchy theme
+        self.theme_watcher_enabled = True
+        self.is_connected = False
+        self.status_update_timer = None
     
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -183,14 +188,16 @@ class TuivLLM(App):
         
         status_bar = self.query_one("#status-bar", StatusBar)
         model_name = VLLM_MODEL.split('/')[-1] if '/' in VLLM_MODEL else VLLM_MODEL
-        status_bar.status_text = f"[green]● Connected[/green] [dim]│[/dim] Endpoint: {LMSTUDIO_URL}"
+        status_bar.status_text = "\n[yellow]● Starting[/yellow]"
         
         # Update model and memory info
         self.update_status_bar_right()
         
         self.start_theme_watcher()
         self.set_interval(0.1, self.refresh_gradient)
-        self.set_interval(2.0, self.update_status_bar_right)
+        
+        # Start with fast polling (3 seconds) while starting up
+        self.status_update_timer = self.set_interval(3.0, self.update_status_bar_right)
         
         # Focus input field
         self.query_one("#chat-input", Input).focus()
@@ -207,7 +214,52 @@ class TuivLLM(App):
         """Update model and memory info on status bar"""
         try:
             status_bar = self.query_one("#status-bar", StatusBar)
-            model_name = VLLM_MODEL.split('/')[-1] if '/' in VLLM_MODEL else VLLM_MODEL
+            
+            # Fetch current model from vLLM API (dynamic, updates when model switches)
+            model_name = "Loading..."
+            connection_status = "[yellow]● Starting[/yellow]"
+            
+            try:
+                import httpx
+                from config import LMSTUDIO_URL, VLLM_API_KEY
+                
+                # Get from API
+                endpoint = LMSTUDIO_URL.rstrip('/')
+                if not endpoint.endswith('/api'):
+                    endpoint = f"{endpoint}/api"
+                models_url = f"{endpoint}/models"
+                
+                response = httpx.get(
+                    models_url,
+                    headers={
+                        "Authorization": f"Bearer {VLLM_API_KEY}",
+                        "Cache-Control": "no-cache, no-store, must-revalidate",
+                        "Pragma": "no-cache"
+                    },
+                    timeout=2.0
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    models = data.get("data", [])
+                    if models:
+                        # Model ID is now in correct format: "org/model-name"
+                        model_name = models[0].get("id", "Unknown")
+                        connection_status = "[green]● Connected[/green]"
+                        
+                        # Switch to slower polling once connected
+                        if not self.is_connected:
+                            self.is_connected = True
+                            if self.status_update_timer:
+                                self.status_update_timer.stop()
+                            # Now poll every 30 seconds
+                            self.status_update_timer = self.set_interval(30.0, self.update_status_bar_right)
+            except:
+                # Fallback to config value
+                model_name = VLLM_MODEL if VLLM_MODEL else "Unknown"
+            
+            # Update connection status
+            status_bar.status_text = f"\n{connection_status}"
             
             # Get RAM info
             mem = psutil.virtual_memory()
@@ -336,7 +388,7 @@ class TuivLLM(App):
     @work(exclusive=True)
     async def send_message(self, message: str):
         """Send a message to the LLM"""
-        if not message.strip() or self.is_processing:
+        if not message.strip():
             return
         
         self.is_processing = True
@@ -347,7 +399,12 @@ class TuivLLM(App):
         try:
             # Update status
             status_bar = self.query_one("#status-bar", StatusBar)
-            status_bar.status_text = "[yellow]● Processing...[/yellow]"
+            status_bar.status_text = "\n[yellow]● Processing...[/yellow]"
+            
+            # Show current temperature (for debugging)
+            from settings import get_settings
+            temp = get_settings().get("temperature", 0.7)
+            self.log(f"Using temperature: {temp}")
             
             # Add user message
             await self.add_message("user", message)
@@ -359,12 +416,12 @@ class TuivLLM(App):
             await self.add_message("assistant", response)
             
             # Update status
-            status_bar.status_text = f"[green]● Connected[/green] [dim]│[/dim] Endpoint: {LMSTUDIO_URL}"
+            status_bar.status_text = "\n[green]● Connected[/green]"
             
         except Exception as e:
             await self.add_system_message(f"Error: {str(e)}")
             status_bar = self.query_one("#status-bar", StatusBar)
-            status_bar.status_text = f"[red]● Error[/red] [dim]│[/dim] {str(e)}"
+            status_bar.status_text = f"\n[red]● Error[/red] {str(e)}"
         
         finally:
             self.is_processing = False
@@ -393,6 +450,83 @@ class TuivLLM(App):
             self.call_later(self.add_system_message, "Reconnected to LLM endpoint.")
         except Exception as e:
             self.log(f"Error reconnecting: {e}")
+    
+    def action_settings(self) -> None:
+        """Open settings modal"""
+        def handle_theme_change(theme_name):
+            if theme_name:
+                self.switch_theme(theme_name)
+            # Reconnect to apply any endpoint changes
+            self.action_reconnect()
+            
+            # Reset to fast polling in case model is switching
+            self.is_connected = False
+            if self.status_update_timer:
+                self.status_update_timer.stop()
+            self.status_update_timer = self.set_interval(3.0, self.update_status_bar_right)
+            
+            # Update status to show "Starting" while model switches
+            status_bar = self.query_one("#status-bar", StatusBar)
+            status_bar.status_text = "\n[yellow]● Starting[/yellow]"
+            
+            # Refresh status bar to show updated model
+            self.update_status_bar_right()
+        
+        self.push_screen(SettingsModal(self.current_theme), handle_theme_change)
+    
+    def switch_theme(self, theme_name: str) -> None:
+        """Switch to a different theme"""
+        self.current_theme = theme_name
+        if theme_name == "system":
+            self.theme_watcher_enabled = True
+            if not self.theme_observer:
+                self.start_theme_watcher()
+        else:
+            # Disable watcher for custom themes
+            self.theme_watcher_enabled = False
+            if self.theme_observer:
+                self.theme_observer.stop()
+                self.theme_observer = None
+        
+        # Force reload the theme module to clear cache
+        import sys
+        if 'theme_loader' in sys.modules:
+            del sys.modules['theme_loader']
+        from theme_loader import get_theme_loader as get_loader_fresh
+        
+        # Load the new theme directly
+        theme_loader = get_loader_fresh()
+        theme_loader.load_theme(theme_name)
+        
+        # Apply and refresh everything (without calling reload_theme again)
+        self.apply_theme_to_css()
+        
+        # Refresh all widgets manually
+        try:
+            self.query_one(StatusBar).refresh()
+            
+            for border in self.query(ContainerBorder):
+                border.refresh()
+            for border in self.query(SideBorder):
+                border.refresh()
+            for button in self.query(KeybindingButton):
+                button.refresh()
+            for border in self.query(FooterBorder):
+                border.refresh()
+            for border in self.query(FooterEnd):
+                border.refresh()
+            for spacer in self.query(FooterSpacer):
+                spacer.refresh()
+            
+            messages_scroll = self.query_one("#messages-scroll", VerticalScroll)
+            for widget in messages_scroll.query(ChatMessage):
+                widget.refresh()
+        except:
+            pass
+        
+        # Notify user
+        theme_display = "Omarchy Theme" if theme_name == "system" else theme_name
+        self.notify(f"Theme changed to: {theme_display}", severity="information", timeout=2)
     
     def action_quit(self) -> None:
         """Quit the application"""

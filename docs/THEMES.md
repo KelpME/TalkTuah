@@ -115,19 +115,40 @@ These adapt to your terminal's color scheme:
 24-bit truecolor (requires `truecolor = True`):
 - `#ff5555`
 - `#50fa7b`
-
 ### RGB Colors
 - `rgb(255,85,85)`
 
+## How It Works
+
+**Default Behavior (Recommended):**
+- TuivLLM automatically reads from `~/.config/omarchy/current/btop.theme`
+- When you change your Omarchy theme with `omarchy theme set <name>`, TuivLLM updates in real-time
+- No configuration needed!
+
+**Custom Themes (Optional):**
+
+If you want a theme different from your system theme:
+
+1. Create your theme file in `frontend/themes/my-custom-theme.theme`:
+   ```theme
+   # My Custom Theme
+   theme[main_bg]="#1a1b26"
+   theme[main_fg]="#c0caf5"
+   theme[user_color]="#7aa2f7"
+   theme[ai_color]="#bb9af7"
+   # ... etc
+   ```
+
+2. Edit `frontend/tuivllm.conf.example` (or create `frontend/tuivllm.conf`):
+   ```ini
+   color_theme = "my-custom-theme"
+   ```
+
+3. Restart TuivLLM
+
 ## Creating Your Own Theme
 
-1. Create a new `.theme` file in `~/.config/tuivllm/themes/`
-2. Copy one of the existing themes as a template
-3. Modify the colors to your liking
-4. Set `color_theme = "yourtheme"` in `tuivllm.conf`
-5. Restart TuivLLM
-
-### Example: Custom Theme
+Example custom theme:
 
 ```theme
 # My Custom Theme
