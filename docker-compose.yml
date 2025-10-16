@@ -1,7 +1,15 @@
+networks:
+  talktuah:
+    driver: bridge
+
 services:
   vllm:
     image: rocm/vllm:latest
     container_name: vllm-server
+    networks:
+      talktuah:
+        aliases:
+          - vllm
     command:
       - vllm
       - serve
@@ -12,12 +20,10 @@ services:
       - "8000"
       - --dtype
       - float16
-      - --max-model-len
-      - "${MAX_MODEL_LEN:-4096}"
       - --tensor-parallel-size
       - "${TP_SIZE:-1}"
       - --gpu-memory-utilization
-      - "0.75"
+      - "${GPU_MEMORY_UTILIZATION:-0.75}"
       - --max-num-seqs
       - "16"
     environment:
@@ -26,6 +32,8 @@ services:
       - HSA_OVERRIDE_GFX_VERSION=11.0.0
       - ROCM_PATH=/opt/rocm
       - HIP_VISIBLE_DEVICES=0
+      - VLLM_DEVICE=rocm
+      - VLLM_WORKER_MULTIPROC_METHOD=spawn
     volumes:
       - ./models:/workspace/models
       - /dev/kfd:/dev/kfd
@@ -53,6 +61,8 @@ services:
       context: ./apps/api
       dockerfile: Dockerfile
     container_name: vllm-proxy-api
+    networks:
+      - talktuah
     environment:
       - PROXY_API_KEY=${PROXY_API_KEY}
       - UPSTREAM_BASE_URL=${OPENAI_BASE_URL}

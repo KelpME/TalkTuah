@@ -29,7 +29,8 @@ echo "model=$MODEL_ID" >> "$PROGRESS_FILE"
 echo "progress=10" >> "$PROGRESS_FILE"
 
 # Set HF_HOME to use local models directory
-export HF_HOME="$(cd "$(dirname "$0")/.." && pwd)/$MODELS_DIR"
+# Always use /workspace/models regardless of where script is run from
+export HF_HOME="/workspace/$MODELS_DIR"
 
 # Download the model using huggingface-cli
 huggingface-cli download "$MODEL_ID" 2>&1 | while IFS= read -r line; do

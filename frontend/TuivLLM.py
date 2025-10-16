@@ -43,105 +43,12 @@ class OmarchyThemeWatcher(FileSystemEventHandler):
 class TuivLLM(App):
     """BTOP++ styled TUI chatbot interface"""
     
-    CSS = """
-    Screen {
-        background: transparent;
-    }
-    
-    Header {
-        dock: top;
-        height: 1;
-    }
-    
-    #main-box {
-        width: 100%;
-        height: 1fr;
-        padding: 0;
-        margin: 0;
-    }
-    
-    #status-bar {
-        height: 3;
-        width: 100%;
-    }
-    
-    #conversation-box {
-        width: 100%;
-        height: 1fr;
-        layout: horizontal;
-    }
-    
-    SideBorder {
-        width: 1;
-        height: 100%;
-    }
-    
-    #conversation-content {
-        width: 1fr;
-        height: 100%;
-    }
-    
-    #messages-scroll {
-        width: 100%;
-        height: 1fr;
-        padding: 0 2;
-        scrollbar-size: 0 0;
-        align: left bottom;
-    }
-    
-    ContainerBorder {
-        width: 100%;
-        height: 1;
-    }
-    
-    ChatMessage {
-        width: 100%;
-        height: auto;
-        padding: 0;
-        margin-bottom: 1;
-    }
-    
-    #chat-input {
-        width: 100%;
-        height: 4;
-        border: none;
-        padding: 0 1;
-        color: $success;
-    }
-    
-    CustomFooter {
-        height: 1;
-        width: 100%;
-        layout: horizontal;
-    }
-    
-    FooterBorder {
-        width: auto;
-        height: 1;
-    }
-    
-    FooterEnd {
-        width: 1fr;
-        height: 1;
-    }
-    
-    KeybindingButton {
-        width: auto;
-        height: 1;
-    }
-    
-    FooterSpacer {
-        width: auto;
-        height: 1;
-    }
-    
-    .system-msg {
-        color: $warning;
-        text-style: italic;
-        padding: 0 1;
-        margin-bottom: 1;
-    }
-    """
+    # Modular CSS organization for better maintainability
+    CSS_PATH = [
+        "styles/main.tcss",
+        "styles/chat.tcss",
+        "styles/footer.tcss",
+    ]
     
     BINDINGS = [
         ("ctrl+c", "quit", "Quit"),
@@ -191,13 +98,17 @@ class TuivLLM(App):
         status_bar.status_text = "\n[yellow]● Starting[/yellow]"
         
         # Update model and memory info
+        # Initial status update (no polling needed - model name is in config)
         self.update_status_bar_right()
         
         self.start_theme_watcher()
         self.set_interval(0.1, self.refresh_gradient)
         
-        # Start with fast polling (3 seconds) while starting up
-        self.status_update_timer = self.set_interval(3.0, self.update_status_bar_right)
+        # No polling timer - status only updates when needed:
+        # 1. On startup (above)
+        # 2. After sending a message (checks connection)
+        # 3. After switching models (in settings callback)
+        self.status_update_timer = None
         
         # Focus input field
         self.query_one("#chat-input", Input).focus()
@@ -210,52 +121,59 @@ class TuivLLM(App):
         except:
             pass
     
-    def update_status_bar_right(self):
-        """Update model and memory info on status bar"""
+    def update_status_bar_right(self, check_connection: bool = True):
+        """Update model and memory info on status bar
+        
+        Args:
+            check_connection: If True, ping API to check if vLLM is responding
+        """
         try:
             status_bar = self.query_one("#status-bar", StatusBar)
             
-            # Fetch current model from vLLM API (dynamic, updates when model switches)
-            model_name = "Loading..."
-            connection_status = "[yellow]● Starting[/yellow]"
+            # Get currently loaded model from API (not config)
+            model_name = "Unknown"
+            connection_status = "[green]● Ready[/green]"
             
-            try:
-                import httpx
-                from config import LMSTUDIO_URL, VLLM_API_KEY
-                
-                # Get from API
-                endpoint = LMSTUDIO_URL.rstrip('/')
-                if not endpoint.endswith('/api'):
-                    endpoint = f"{endpoint}/api"
-                models_url = f"{endpoint}/models"
-                
-                response = httpx.get(
-                    models_url,
-                    headers={
-                        "Authorization": f"Bearer {VLLM_API_KEY}",
-                        "Cache-Control": "no-cache, no-store, must-revalidate",
-                        "Pragma": "no-cache"
-                    },
-                    timeout=2.0
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    models = data.get("data", [])
-                    if models:
-                        # Model ID is now in correct format: "org/model-name"
-                        model_name = models[0].get("id", "Unknown")
-                        connection_status = "[green]● Connected[/green]"
-                        
-                        # Switch to slower polling once connected
-                        if not self.is_connected:
-                            self.is_connected = True
-                            if self.status_update_timer:
-                                self.status_update_timer.stop()
-                            # Now poll every 30 seconds
-                            self.status_update_timer = self.set_interval(30.0, self.update_status_bar_right)
-            except:
-                # Fallback to config value
+            # Check connection and get actual loaded model
+            if check_connection:
+                try:
+                    import httpx
+                    from config import LMSTUDIO_URL, VLLM_API_KEY
+                    
+                    endpoint = LMSTUDIO_URL.rstrip('/')
+                    if not endpoint.endswith('/api'):
+                        endpoint = f"{endpoint}/api"
+                    
+                    # Query model-status to get current_model and health
+                    status_url = f"{endpoint}/model-status"
+                    
+                    response = httpx.get(
+                        status_url,
+                        headers={"Authorization": f"Bearer {VLLM_API_KEY}"},
+                        timeout=2.0
+                    )
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        # Use currently loaded model from vLLM
+                        if data.get("current_model"):
+                            model_name = data["current_model"]
+                            connection_status = "[green]● Connected[/green]"
+                        elif data.get("vllm_healthy"):
+                            connection_status = "[yellow]● Loading Model[/yellow]"
+                            # Fallback to config if model not loaded yet
+                            model_name = VLLM_MODEL if VLLM_MODEL else "Unknown"
+                        else:
+                            connection_status = "[yellow]● Starting[/yellow]"
+                            model_name = VLLM_MODEL if VLLM_MODEL else "Unknown"
+                    else:
+                        connection_status = "[yellow]● Starting[/yellow]"
+                        model_name = VLLM_MODEL if VLLM_MODEL else "Unknown"
+                except:
+                    connection_status = "[red]● Disconnected[/red]"
+                    model_name = VLLM_MODEL if VLLM_MODEL else "Unknown"
+            else:
+                # When not checking connection, use config as fallback
                 model_name = VLLM_MODEL if VLLM_MODEL else "Unknown"
             
             # Update connection status
@@ -401,10 +319,11 @@ class TuivLLM(App):
             status_bar = self.query_one("#status-bar", StatusBar)
             status_bar.status_text = "\n[yellow]● Processing...[/yellow]"
             
-            # Show current temperature (for debugging)
+            # Log current settings
             from settings import get_settings
-            temp = get_settings().get("temperature", 0.7)
-            self.log(f"Using temperature: {temp}")
+            settings = get_settings()
+            temp = settings.get("temperature", 0.7)
+            self.log(f"[bold cyan]Using temperature: {temp}[/bold cyan]")
             
             # Add user message
             await self.add_message("user", message)
@@ -415,8 +334,8 @@ class TuivLLM(App):
             # Add AI response
             await self.add_message("assistant", response)
             
-            # Update status
-            status_bar.status_text = "\n[green]● Connected[/green]"
+            # Update status - check connection after successful message
+            self.update_status_bar_right(check_connection=True)
             
         except Exception as e:
             await self.add_system_message(f"Error: {str(e)}")
@@ -459,18 +378,16 @@ class TuivLLM(App):
             # Reconnect to apply any endpoint changes
             self.action_reconnect()
             
-            # Reset to fast polling in case model is switching
-            self.is_connected = False
-            if self.status_update_timer:
-                self.status_update_timer.stop()
-            self.status_update_timer = self.set_interval(3.0, self.update_status_bar_right)
-            
-            # Update status to show "Starting" while model switches
-            status_bar = self.query_one("#status-bar", StatusBar)
-            status_bar.status_text = "\n[yellow]● Starting[/yellow]"
-            
-            # Refresh status bar to show updated model
-            self.update_status_bar_right()
+            # Update status immediately after model switch
+            try:
+                status_bar = self.query_one("#status-bar", StatusBar)
+                status_bar.status_text = "\n[yellow]● Loading Model[/yellow]"
+                
+                # Refresh status bar to show updated model (check connection)
+                self.update_status_bar_right(check_connection=True)
+            except Exception:
+                # Status bar not mounted yet, skip update
+                pass
         
         self.push_screen(SettingsModal(self.current_theme), handle_theme_change)
     

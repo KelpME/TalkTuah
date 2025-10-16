@@ -1,0 +1,137 @@
+/* Settings Modal Styles */
+
+SettingsModal {
+    align: center middle;
+}
+
+#settings-container {
+    width: 70;
+    max-width: 70;
+    height: auto;
+    background: $background;
+    padding: 0;
+    overflow-x: hidden;
+}
+
+#theme-list {
+    width: 100%;
+    height: auto;
+    margin-top: 1;
+    margin-bottom: 1;
+    padding: 0 2;
+}
+
+ThemeOption {
+    width: 100%;
+    height: 1;
+}
+
+ModelOption {
+    width: 100%;
+    height: 1;
+}
+
+#model-list {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    max-height: 5;
+    overflow-y: auto;
+}
+
+Vertical {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    padding: 0;
+    margin: 0;
+}
+
+Container {
+    width: 100%;
+    height: auto;
+    padding: 0;
+    margin: 0;
+}
+
+Horizontal {
+    width: 100%;
+    height: auto;
+    padding: 0;
+    margin: 0;
+}
+
+#settings-info {
+    width: 100%;
+    padding: 0 2;
+    margin-bottom: 1;
+}
+
+#settings-footer {
+    width: 100%;
+    text-align: center;
+    padding: 0 2;
+    margin-top: 1;
+    margin-bottom: 1;
+}
+
+#endpoint-input-box {
+    width: 100%;
+    height: 1;
+    layout: horizontal;
+}
+
+#endpoint-input-box SideBorder {
+    width: 1;
+    height: 1;
+}
+
+#endpoint-input {
+    width: 1fr;
+    height: 1;
+    border: none;
+    padding: 0 1;
+}
+
+ModalFooter {
+    width: 100%;
+    height: 1;
+}
+
+/* Model Manager Styles */
+ModelManager {
+    width: 100%;
+    height: auto;
+}
+
+#model-download-box {
+    width: 100%;
+    height: auto;
+}
+
+#model-download-input {
+    width: 100%;
+    height: 1;
+    background: $surface;
+    color: $text;
+    border: none;
+    padding: 0 1;
+    margin: 0;
+}
+
+#model-download-input:focus {
+    background: $surface;
+    border: none;
+}
+
+#model-list-container {
+    width: 100%;
+    height: auto;
+    max-height: 10;
+    overflow-y: auto;
+}
+
+ModelListItem {
+    width: 100%;
+    height: 1;
+}

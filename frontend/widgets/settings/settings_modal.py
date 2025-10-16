@@ -11,240 +11,22 @@ from ..layout.modal_footer import ModalFooter
 from .model_manager import ModelManager, ModelDownloadRequested
 from .model_option import ModelOption, ModelSelected
 from .theme_option import ThemeOption, ThemeSelected
+from .temperature_slider import TemperatureSlider
+from .gpu_memory_slider import GPUMemorySlider, GPUMemoryChanged
+from .max_tokens_slider import MaxTokensSlider, MaxTokensChanged
+from .huggingface_models import get_model_info
+from .endpoint_widget import EndpointLine
+from .download_manager import DownloadManager
 from .utils import strip_markup
 from . import api_client
 import asyncio
 
 
-class EndpointLine(Static, can_focus=True):
-    """Editable endpoint line with reset button"""
-    
-    def __init__(self, value: str, default_value: str, inner_width: int = 66):
-        super().__init__()
-        self.value = value
-        self.default_value = default_value
-        self.inner_width = inner_width
-        self.can_focus = True
-        self.editing = False
-        self.cursor_pos = len(value)
-    
-    def render(self) -> str:
-        theme = get_theme_loader()
-        ai_color = theme.get_color("ai_color", "cyan")
-        user_color = theme.get_color("user_color", "cyan")
-        
-        label = "Endpoint: "
-        reset_btn = "[Reset]"
-        display_value = self.value if not self.editing else self.value + "█"
-        content = label + display_value
-        # Calculate padding to push reset button to the right
-        # Account for: label + value + space + [Reset] + space = total content
-        content_len = len(label) + len(self.value) + 1 + len(reset_btn)
-        padding = max(0, self.inner_width - content_len)
-        
-        if self.editing:
-            return f"[{ai_color}]│ [{user_color}]{content}[/]{' ' * padding} [dim]{reset_btn}[/dim] │[/]"
-        else:
-            return f"[{ai_color}]│ {content}{' ' * padding} [{user_color}]{reset_btn}[/] │[/]"
-    
-    def on_click(self) -> None:
-        self.editing = True
-        self.focus()
-        self.refresh()
-    
-    def on_key(self, event) -> None:
-        if not self.editing:
-            if event.key == "enter":
-                self.editing = True
-                self.refresh()
-            elif event.key == "r":
-                # Reset to default
-                self.value = self.default_value
-                self.refresh()
-            return
-        
-        if event.key == "enter" or event.key == "escape":
-            self.editing = False
-            self.refresh()
-        elif event.key == "backspace":
-            if self.value:
-                self.value = self.value[:-1]
-            self.value += event.key
-            self.refresh()
-
-
-class TemperatureSlider(Static, can_focus=True):
-    """Temperature slider widget"""
-    
-    def __init__(self, value: float = 0.7, inner_width: int = 66):
-        super().__init__()
-        self.value = value
-        self.can_focus = True
-        self.dragging = False
-        self.inner_width = inner_width
-    
-    def render(self) -> str:
-        theme = get_theme_loader()
-        ai_color = theme.get_color("ai_color", "cyan")
-        user_color = theme.get_color("user_color", "cyan")
-        
-        # Create slider bar (0.0 to 2.0)
-        slider_width = 40
-        position = int((self.value / 2.0) * slider_width)
-        
-        bar = "─" * position + "●" + "─" * (slider_width - position - 1)
-        label = f"Temperature: {self.value:.2f}"
-        content_len = len(label) + 1 + slider_width  # label + space + bar
-        padding = max(0, self.inner_width - content_len)
-        
-        return f"[{ai_color}]│ {label} [{user_color}]{bar}[/]{' ' * padding} │[/]"
-    
-    def on_key(self, event) -> None:
-        """Handle arrow keys to adjust temperature"""
-        if event.key == "left":
-            self.value = max(0.0, self.value - 0.1)
-            self.refresh()
-        elif event.key == "right":
-            self.value = min(2.0, self.value + 0.1)
-            self.refresh()
-    
-    def on_click(self, event) -> None:
-        """Handle click to set value and focus"""
-        self.focus()
-        self._update_from_mouse(event.x)
-    
-    def on_mouse_down(self, event) -> None:
-        """Start dragging"""
-        self.dragging = True
-        self._update_from_mouse(event.x)
-    
-    def on_mouse_up(self, event) -> None:
-        """Stop dragging"""
-        self.dragging = False
-    
-    def on_mouse_move(self, event) -> None:
-        """Update value while dragging"""
-        if self.dragging:
-            self._update_from_mouse(event.x)
-    
-    def _update_from_mouse(self, mouse_x: int):
-        """Update temperature value based on mouse position"""
-        # Calculate where the slider bar starts (after "│ Temperature: 0.00 ")
-        label_offset = 20  # Approximate offset to start of slider bar
-        slider_width = 40
-        
-        # Calculate position relative to slider bar
-        relative_x = mouse_x - label_offset
-        
-        if 0 <= relative_x <= slider_width:
-            # Convert position to value (0.0 to 2.0)
-            self.value = (relative_x / slider_width) * 2.0
-            self.value = max(0.0, min(2.0, self.value))  # Clamp
-            self.refresh()
-
-
 class SettingsModal(ModalScreen):
     """Settings modal for theme selection"""
     
-    CSS = """
-    SettingsModal {
-        align: center middle;
-    }
-    
-    #settings-container {
-        width: 70;
-        max-width: 70;
-        height: auto;
-        background: $background;
-        padding: 0;
-        overflow-x: hidden;
-    }
-    
-    #theme-list {
-        width: 100%;
-        height: auto;
-        margin-top: 1;
-        margin-bottom: 1;
-        padding: 0 2;
-    }
-    
-    ThemeOption {
-        width: 100%;
-        height: 1;
-    }
-    
-    ModelOption {
-        width: 100%;
-        height: 1;
-    }
-    
-    #model-list {
-        width: 100%;
-        max-width: 100%;
-        height: auto;
-        max-height: 5;
-        overflow-y: auto;
-    }
-    
-    Vertical {
-        width: 100%;
-        max-width: 100%;
-        height: auto;
-        padding: 0;
-        margin: 0;
-    }
-    
-    Container {
-        width: 100%;
-        height: auto;
-        padding: 0;
-        margin: 0;
-    }
-    
-    Horizontal {
-        width: 100%;
-        height: auto;
-        padding: 0;
-        margin: 0;
-    }
-    
-    #settings-info {
-        width: 100%;
-        padding: 0 2;
-        margin-bottom: 1;
-    }
-    
-    #settings-footer {
-        width: 100%;
-        text-align: center;
-        padding: 0 2;
-        margin-top: 1;
-        margin-bottom: 1;
-    }
-    
-    #endpoint-input-box {
-        width: 100%;
-        height: 1;
-        layout: horizontal;
-    }
-    
-    #endpoint-input-box SideBorder {
-        width: 1;
-        height: 1;
-    }
-    
-    #endpoint-input {
-        width: 1fr;
-        height: 1;
-        border: none;
-        padding: 0 1;
-    }
-    
-    ModalFooter {
-        width: 100%;
-        height: 1;
-    }
-    """
+    # External CSS for better organization (relative to frontend/)
+    CSS_PATH = "../../styles/settings.tcss"
     
     def __init__(self, current_theme: str):
         super().__init__()
@@ -252,9 +34,15 @@ class SettingsModal(ModalScreen):
         self.available_themes = self.get_available_themes()
         self.settings = get_settings()
         self.temp_slider = None
+        self.gpu_memory_slider = None
+        self.max_tokens_slider = None
         self.endpoint_input = None
         self.available_models = []
-        self.download_active = False
+        self.download_manager = DownloadManager(
+            self.settings,
+            self.notify,
+            self.log
+        )
         self.progress_timer = None
     
     def compose(self):
@@ -317,6 +105,22 @@ class SettingsModal(ModalScreen):
             
             self.temp_slider = TemperatureSlider(self.settings.get("temperature", 0.7), inner_width)
             yield self.temp_slider
+            
+            yield Static(f"[{ai_color}]│{' ' * (inner_width + 2)}│[/]")
+            
+            self.gpu_memory_slider = GPUMemorySlider(self.settings.get("gpu_memory_utilization", 0.75), inner_width)
+            yield self.gpu_memory_slider
+            
+            yield Static(f"[{ai_color}]│{' ' * (inner_width + 2)}│[/]")
+            
+            # Get max tokens for current model
+            from config import VLLM_MODEL
+            model_info = get_model_info(VLLM_MODEL)
+            model_max_tokens = model_info.get("max_tokens", 4096)
+            current_max_tokens = self.settings.get("max_tokens", min(2048, model_max_tokens))
+            
+            self.max_tokens_slider = MaxTokensSlider(current_max_tokens, model_max_tokens, inner_width)
+            yield self.max_tokens_slider
             
             help_line = "[dim]Use ← → or drag to adjust[/dim]"
             padding = inner_width - len(strip_markup(help_line))
@@ -406,6 +210,23 @@ class SettingsModal(ModalScreen):
         # Update selected model in settings
         self.settings.set("selected_model", message.model_name)
         
+        # Update max_tokens to 75% of new model's max to leave room for input
+        model_info = get_model_info(message.model_name)
+        model_max_tokens = model_info.get("max_tokens", 4096)
+        recommended_max_tokens = int(model_max_tokens * 0.75)
+        
+        # Update the slider if it exists
+        if self.max_tokens_slider:
+            self.max_tokens_slider.max_value = float(model_max_tokens)
+            self.max_tokens_slider.value = float(recommended_max_tokens)
+            self.max_tokens_slider.refresh()
+            self.settings.set("max_tokens", recommended_max_tokens)
+            self.notify(
+                f"Max tokens set to {recommended_max_tokens} (75% of {model_max_tokens})",
+                severity="information",
+                timeout=3
+            )
+        
         # Update UI to show selection
         for option in self.query(ModelOption):
             option.is_selected = (option.model_name == message.model_name)
@@ -422,6 +243,7 @@ class SettingsModal(ModalScreen):
                 severity="information",
                 timeout=10
             )
+                
         except Exception as e:
             self.notify(f"Error switching model: {str(e)}", severity="error", timeout=5)
     
@@ -434,6 +256,10 @@ class SettingsModal(ModalScreen):
         """Save all settings"""
         if self.temp_slider:
             self.settings.set("temperature", round(self.temp_slider.value, 2))
+        if self.gpu_memory_slider:
+            self.settings.set("gpu_memory_utilization", round(self.gpu_memory_slider.value, 2))
+        if self.max_tokens_slider:
+            self.settings.set("max_tokens", int(self.max_tokens_slider.value))
         if self.endpoint_input:
             self.settings.set("endpoint", self.endpoint_input.value.strip())
     
@@ -470,59 +296,19 @@ class SettingsModal(ModalScreen):
     async def poll_download_progress(self) -> None:
         """Poll for download progress and update progress bar"""
         try:
-            endpoint = self.settings.get("endpoint", LMSTUDIO_URL)
-            progress_url = f"{endpoint}/download-progress"
-            
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(
-                    progress_url,
-                    headers={"Authorization": f"Bearer {VLLM_API_KEY}"}
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    status = data.get('status')
-                    progress = data.get('progress', 0)
-                    model = data.get('model', '')
-                    
-                    theme = get_theme_loader()
-                    user_color = theme.get_color("user_color", "cyan")
-                    ai_color = theme.get_color("ai_color", "yellow")
-                    inner_width = 66
-                    
-                    progress_widget = self.query_one("#download-progress", Static)
-                    
-                    if status == 'complete':
-                        # Clear progress bar
-                        progress_widget.update(f"[{ai_color}]│{' ' * (inner_width + 2)}│[/]")
-                        self.download_active = False
-                        
-                        self.notify(f"✓ Download complete! {model} is ready.", severity="information", timeout=5)
-                        
-                        # Refresh model lists
-                        await self.refresh_model_lists()
-                        
-                        return False  # Stop polling
-                    elif status == 'error':
-                        # Clear progress bar
-                        progress_widget.update(f"[{ai_color}]│{' ' * (inner_width + 2)}│[/]")
-                        self.download_active = False
-                        
-                        error = data.get('error', 'Unknown error')
-                        self.notify(f"✗ Download failed: {error}", severity="error", timeout=10)
-                        return False  # Stop polling
-                    elif status != 'idle':
-                        # Update progress bar
-                        filled = progress // 5
-                        empty = 20 - filled
-                        bar = f"[{user_color}]{'⣿' * filled}[/][dim]{'⣀' * empty}[/]"
-                        
-                        status_text = f"[{ai_color}]Downloading {model}...[/] [{bar}] [{user_color}]{progress}%[/] [dim]{status}[/]"
-                        padding = max(0, inner_width - len(strip_markup(status_text)))
-                        
-                        progress_widget.update(f"[{ai_color}]│ {status_text}{' ' * padding} │[/]")
+            progress_widget = self.query_one("#download-progress", Static)
+            should_continue = await self.download_manager.poll_progress(
+                progress_widget,
+                self.refresh_model_lists
+            )
+            if not should_continue:
+                return False
         except Exception as e:
             self.log(f"Progress poll error: {e}")
+    
+    def on_unmount(self) -> None:
+        """Save settings when modal is closed by any method"""
+        self.save_settings()
     
     def on_key(self, event) -> None:
         """Handle key presses"""

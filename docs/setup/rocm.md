@@ -6,7 +6,7 @@ Your system has:
 - AMD Ryzen AI Max+ 395 APU
 - Radeon 8060S iGPU (gfx1151 - RDNA 3.5)
 - ROCm 6.4.3 installed
-- Up to 16GB VRAM available
+- Shared memory architecture (up to 128GB addressable)
 
 ## Step 1: Verify ROCm Installation
 
@@ -72,16 +72,19 @@ make up
 make logs
 ```
 
-## Recommended Models for 16GB VRAM
+## Recommended Models
 
-| Model | Size | VRAM Usage | Performance |
+| Model | Size | Memory Usage | Performance |
 |-------|------|------------|-------------|
 | Qwen2.5-1.5B-Instruct | 1.5B | ~3GB | Fast, good for testing |
 | Phi-3-mini-4k | 3.8B | ~8GB | Excellent quality |
-| Qwen2.5-7B-Instruct | 7B | ~14GB | Best quality (tight fit) |
+| Qwen2.5-7B-Instruct | 7B | ~14GB | Best quality |
 | Mistral-7B-Instruct | 7B | ~14GB | Great general purpose |
+| Qwen2.5-14B-Instruct | 14B | ~28GB | High quality (requires more RAM) |
 
 **Start with 1.5B or 3.8B models to verify everything works!**
+
+**GPU Memory Allocation:** Configurable via TUI settings (10%-95%). Adjust based on available system RAM.
 
 ## Troubleshooting
 
@@ -120,10 +123,14 @@ Then restart: `make restart`
 
 ### "Out of memory" during model loading
 
-**Cause:** Model too large for 16GB VRAM
+**Cause:** Model too large for allocated GPU memory
 
 **Solution:**
 ```bash
+# Increase GPU memory allocation in TUI settings (press 's')
+# Or edit .env:
+GPU_MEMORY_UTILIZATION=0.90
+
 # Use smaller model
 DEFAULT_MODEL=Qwen/Qwen2.5-1.5B-Instruct
 
@@ -145,9 +152,13 @@ sudo usermod -aG docker $USER
 
 ### 1. Optimize Memory Usage
 ```bash
-# In .env
-MAX_MODEL_LEN=4096          # Reduce if needed
-gpu-memory-utilization=0.85  # Increase from 0.75 if stable
+# Configure GPU memory in TUI (press 's' → adjust slider)
+# Or edit .env:
+GPU_MEMORY_UTILIZATION=0.85  # Increase from 0.75 if stable
+MAX_MODEL_LEN=4096           # Reduce if needed
+
+# Apply settings:
+make apply
 ```
 
 ### 2. Monitor VRAM Usage

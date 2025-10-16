@@ -71,6 +71,22 @@ class LLMClient:
         messages.append({"role": "user", "content": user_message})
         
         try:
+            settings = get_settings()
+            temperature = settings.get("temperature", LMSTUDIO_TEMPERATURE)
+            max_tokens = settings.get("max_tokens", 2048)
+            
+            request_payload = {
+                "model": current_model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "stream": False
+            }
+            
+            # Log the actual request being sent
+            import logging
+            logging.info(f"[LLM Request] Temperature: {temperature}, Model: {current_model}, Max Tokens: {max_tokens}")
+            
             async with httpx.AsyncClient(timeout=LMSTUDIO_TIMEOUT) as client:
                 response = await client.post(
                     f"{self.base_url}/chat",
@@ -78,13 +94,7 @@ class LLMClient:
                         "Authorization": f"Bearer {self.api_key}",
                         "Content-Type": "application/json"
                     },
-                    json={
-                        "model": current_model,
-                        "messages": messages,
-                        "temperature": get_settings().get("temperature", LMSTUDIO_TEMPERATURE),
-                        "max_tokens": LMSTUDIO_MAX_TOKENS,
-                        "stream": False
-                    }
+                    json=request_payload
                 )
                 
                 if response.status_code == 200:

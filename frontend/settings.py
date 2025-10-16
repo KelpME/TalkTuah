@@ -17,6 +17,7 @@ class Settings:
         defaults = {
             "temperature": 0.7,
             "max_tokens": 500,
+            "gpu_memory_utilization": 0.75,
             "show_timestamps": True,
             "auto_scroll": True,
             "show_memory_stats": True,

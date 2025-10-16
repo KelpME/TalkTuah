@@ -1,0 +1,43 @@
+/* Main Application Layout Styles */
+
+Screen {
+    background: transparent;
+}
+
+Header {
+    dock: top;
+    height: 1;
+}
+
+#main-box {
+    width: 100%;
+    height: 1fr;
+    padding: 0;
+    margin: 0;
+}
+
+#status-bar {
+    height: 3;
+    width: 100%;
+}
+
+#conversation-box {
+    width: 100%;
+    height: 1fr;
+    layout: horizontal;
+}
+
+SideBorder {
+    width: 1;
+    height: 100%;
+}
+
+#conversation-content {
+    width: 1fr;
+    height: 100%;
+}
+
+ContainerBorder {
+    width: 100%;
+    height: 1;
+}

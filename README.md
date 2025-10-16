@@ -78,16 +78,21 @@ HF_TOKEN=hf_xxxxxxxxxxxxxxxxx
 make up           # Start backend
 make down         # Stop backend
 make logs         # View logs
+make restart      # Restart services
+make apply        # Apply TUI settings and restart
 make frontend     # Run TUI
+make sync-settings # Sync TUI settings to .env
 make test         # Run tests
 ```
 
 ## Documentation
 
-- [GPU Setup](docs/GPU_SETUP.md) - NVIDIA GPU configuration
-- [Cheatsheet](docs/CHEATSHEET.md) - All commands and shortcuts
-- [Themes](docs/THEMES.md) - Theme customization guide
-- [Changelog](docs/CHANGELOG.md) - Version history
+- [Documentation Index](docs/README.md) - Complete documentation hub
+- [ROCm Setup](docs/setup/rocm.md) - AMD GPU configuration
+- [GPU Memory](docs/setup/gpu-memory.md) - Memory allocation and N8n integration
+- [Keyboard Shortcuts](docs/user/keyboard-shortcuts.md) - All commands and shortcuts
+- [Themes](docs/user/themes.md) - Theme customization guide
+- [Changelog](docs/changelog/CHANGELOG.md) - Version history
 
 ## Troubleshooting
 
@@ -109,8 +114,8 @@ curl http://localhost:8787/api/healthz
 ## Requirements
 
 - Docker & Docker Compose with GPU support
-- NVIDIA GPU with 16GB+ VRAM (for 7B models)
-- NVIDIA Container Toolkit
+- AMD Ryzen AI Max+ 395 APU with ROCm 6.4.3+
+- Shared memory architecture (configurable GPU allocation)
 - Python 3.11+ (for TUI)
 
 ## License

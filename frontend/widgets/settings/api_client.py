@@ -96,16 +96,74 @@ async def download_model(model_id: str, endpoint: str = LMSTUDIO_URL) -> dict:
             raise Exception(f"Failed: {response.status_code}")
 
 
-async def fetch_download_progress(endpoint: str = LMSTUDIO_URL) -> dict:
+async def get_download_progress(endpoint: str = LMSTUDIO_URL) -> dict:
     """Fetch download progress"""
-    progress_url = f"{endpoint}/download-progress"
-    
-    async with httpx.AsyncClient(timeout=5.0) as client:
-        response = await client.get(
-            progress_url,
-            headers={"Authorization": f"Bearer {VLLM_API_KEY}"}
-        )
+    try:
+        progress_url = f"{endpoint}/download-progress"
         
-        if response.status_code == 200:
-            return response.json()
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(
+                progress_url,
+                headers={"Authorization": f"Bearer {VLLM_API_KEY}"}
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+    except Exception:
+        pass
     return {}
+
+
+async def fetch_model_loading_status(endpoint: str = LMSTUDIO_URL) -> dict:
+    """
+    Check if vLLM is ready and which model is loaded.
+    Returns: {"status": "ready"|"loading"|"starting", "model_loaded": bool, "current_model": str}
+    """
+    try:
+        base_url = endpoint.rstrip('/')
+        if not base_url.endswith('/api'):
+            base_url = f"{base_url}/api"
+        status_url = f"{base_url}/model-loading-status"
+        
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            response = await client.get(
+                status_url,
+                headers={"Authorization": f"Bearer {VLLM_API_KEY}"}
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+    except Exception:
+        pass
+    
+    return {
+        "status": "error",
+        "model_loaded": False,
+        "current_model": None,
+        "message": "Failed to connect to API"
+    }
+
+
+async def restart_api(endpoint: str = LMSTUDIO_URL) -> dict:
+    """
+    Trigger API container restart (for DNS refresh).
+    Returns immediately, restart happens in background.
+    """
+    try:
+        base_url = endpoint.rstrip('/')
+        if not base_url.endswith('/api'):
+            base_url = f"{base_url}/api"
+        restart_url = f"{base_url}/restart-api"
+        
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.post(
+                restart_url,
+                headers={"Authorization": f"Bearer {VLLM_API_KEY}"}
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    
+    return {"status": "error", "message": "Failed to restart API"}

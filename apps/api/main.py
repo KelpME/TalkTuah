@@ -41,10 +41,23 @@ app.add_middleware(
 )
 
 # HTTP client for upstream requests
+# Note: We recreate this on DNS errors to force fresh resolution
 http_client = httpx.AsyncClient(
     timeout=httpx.Timeout(settings.upstream_timeout, read=settings.stream_timeout),
     limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
 )
+
+
+async def get_fresh_client():
+    """Create a fresh HTTP client to force DNS re-resolution"""
+    # Force new connections by disabling keep-alive
+    return httpx.AsyncClient(
+        timeout=httpx.Timeout(settings.upstream_timeout, read=settings.stream_timeout),
+        limits=httpx.Limits(max_keepalive_connections=0, max_connections=100),
+        # Force HTTP/1.1 to ensure clean connection
+        http1=True,
+        http2=False
+    )
 
 
 async def stream_chat_response(upstream_response: httpx.Response) -> AsyncIterator[str]:
@@ -96,20 +109,66 @@ async def chat_completion(
     # Prepare upstream request
     upstream_url = f"{settings.upstream_base_url}/chat/completions"
     
-    # Force streaming by default unless explicitly disabled
+    # Default to streaming, but respect client's explicit choice
     request_data = chat_request.model_dump(exclude_none=True)
-    if "stream" not in request_data:
-        request_data["stream"] = True
-    
+    # Use client's setting (now defaults to True from model)
     is_streaming = request_data.get("stream", True)
     
+    # Log request parameters for debugging
+    logger.info(f"[API Proxy] Temperature: {request_data.get('temperature')}, Model: {request_data.get('model')}, Stream: {is_streaming}")
+    
     try:
-        # Make request to vLLM
-        upstream_response = await http_client.post(
-            upstream_url,
-            json=request_data,
-            timeout=settings.stream_timeout if is_streaming else settings.upstream_timeout,
-        )
+        # Make request to vLLM (with DNS retry logic)
+        import asyncio
+        max_retries = 10  # Cover vLLM startup window (30-40s)
+        retry_delay = 4  # seconds
+        
+        upstream_response = None
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                if attempt == 0:
+                    # First attempt: use cached client with normal timeout
+                    client_to_use = http_client
+                    timeout = settings.stream_timeout if is_streaming else settings.upstream_timeout
+                else:
+                    # Retry attempts: create fresh client to force DNS re-resolution
+                    logger.info(f"Attempt {attempt + 1}/{max_retries} - retrying with fresh DNS after {retry_delay}s...")
+                    await asyncio.sleep(retry_delay)
+                    client_to_use = await get_fresh_client()
+                    # Use shorter timeout for retries (10s) to fail fast
+                    timeout = 10.0
+                
+                upstream_response = await client_to_use.post(
+                    upstream_url,
+                    json=request_data,
+                    timeout=timeout,
+                )
+                
+                # Close fresh client if we created one
+                if attempt > 0:
+                    await client_to_use.aclose()
+                
+                break  # Success - exit retry loop
+                
+            except (httpx.ConnectError, httpx.RemoteProtocolError, httpx.TimeoutException) as err:
+                last_error = err
+                if attempt > 0:
+                    # Close fresh client on error
+                    try:
+                        await client_to_use.aclose()
+                    except:
+                        pass
+                
+                if attempt == max_retries - 1:
+                    # Last attempt failed
+                    logger.error(f"All {max_retries} retry attempts failed. Last error: {err}")
+                    raise
+                # Continue to next retry
+        
+        if upstream_response is None:
+            raise last_error or Exception("Failed to connect after retries")
         
         # Handle errors
         if upstream_response.status_code >= 400:
@@ -164,7 +223,18 @@ async def list_models(token: str = Depends(verify_token)):
     upstream_url = f"{settings.upstream_base_url}/models"
     
     try:
-        response = await http_client.get(upstream_url)
+        # Try with cached client first
+        try:
+            response = await http_client.get(upstream_url)
+        except httpx.ConnectError as dns_err:
+            # DNS error - retry with fresh client
+            logger.warning(f"DNS error fetching models, retrying: {dns_err}")
+            fresh_client = await get_fresh_client()
+            try:
+                response = await fresh_client.get(upstream_url)
+            finally:
+                await fresh_client.aclose()
+        
         response.raise_for_status()
         return response.json()
     except httpx.RequestError as e:
@@ -284,7 +354,9 @@ async def root():
             "chat": "/api/chat",
             "models": "/api/models",
             "model_status": "/api/model-status",
+            "model_loading_status": "/api/model-loading-status",
             "switch_model": "/api/switch-model",
+            "restart_api": "/api/restart-api",
             "health": "/api/healthz",
             "metrics": "/metrics",
             "download_model": "/api/download-model",
@@ -299,7 +371,7 @@ async def root():
 async def model_status(token: str = Depends(verify_token)):
     """
     Check if any models are downloaded and available.
-    Returns model availability status.
+    Returns model availability status and currently loaded model from vLLM.
     """
     import os
     from pathlib import Path
@@ -311,6 +383,8 @@ async def model_status(token: str = Depends(verify_token)):
             "models_available": False,
             "models_dir_exists": False,
             "downloaded_models": [],
+            "current_model": None,
+            "vllm_healthy": False,
             "message": "Models directory not found. Please download a model first."
         }
     
@@ -323,10 +397,29 @@ async def model_status(token: str = Depends(verify_token)):
                 model_name = item.name.replace("models--", "").replace("--", "/", 1)
                 downloaded_models.append(model_name)
     
+    # Query vLLM for currently loaded model
+    current_model = None
+    vllm_healthy = False
+    try:
+        response = await http_client.get(
+            f"{settings.upstream_base_url}/models",
+            timeout=3.0
+        )
+        if response.status_code == 200:
+            vllm_healthy = True
+            data = response.json()
+            models_list = data.get("data", [])
+            if models_list and len(models_list) > 0:
+                current_model = models_list[0].get("id")
+    except Exception as e:
+        logger.debug(f"Failed to query vLLM for current model: {e}")
+    
     return {
         "models_available": len(downloaded_models) > 0,
         "models_dir_exists": True,
         "downloaded_models": downloaded_models,
+        "current_model": current_model,
+        "vllm_healthy": vllm_healthy,
         "message": "Models found" if downloaded_models else "No models downloaded yet"
     }
 
@@ -424,38 +517,51 @@ async def switch_model(
         import os
         
         try:
-            # Use docker API directly instead of docker-compose
+            # Use docker compose for entire operation to preserve network config
             logger.info("Stopping and recreating vLLM container...")
-            import docker
             
-            client = docker.from_env()
-            container = client.containers.get("vllm-server")
-            
-            # Stop the container
-            logger.info("Stopping vLLM container...")
-            container.stop(timeout=30)
-            
-            # Remove the container
-            logger.info("Removing vLLM container...")
-            container.remove(force=True)
-            
-            # Recreate using docker-compose (with hyphen)
+            # Use docker compose to stop, remove, and recreate in one operation
+            # This ensures network configuration is preserved
+            # CRITICAL: Use -p to specify project name to avoid wrong network creation
             logger.info("Recreating vLLM container with new model...")
             up_result = subprocess.run(
-                ["docker-compose", "up", "-d", "vllm"],
+                ["docker", "compose", "-p", "talktuah", "up", "-d", "--force-recreate", "vllm"],
                 cwd="/workspace",
                 capture_output=True,
                 text=True,
-                timeout=60,
+                timeout=120,
                 env=os.environ.copy()
             )
             
             if up_result.returncode != 0:
-                logger.error(f"docker-compose stdout: {up_result.stdout}")
-                logger.error(f"docker-compose stderr: {up_result.stderr}")
+                logger.error(f"docker compose stdout: {up_result.stdout}")
+                logger.error(f"docker compose stderr: {up_result.stderr}")
                 raise Exception(f"Docker compose up failed: {up_result.stderr}")
             
             logger.info(f"Successfully switched to model: {model_id}")
+            
+            # Schedule API restart to flush DNS cache
+            # Restart immediately to clear DNS, then vLLM health will improve after its startup
+            async def delayed_api_restart():
+                """Restart API container to flush DNS cache after brief delay"""
+                # Give vLLM time to start container and begin model loading
+                # Don't wait too long - the restart itself will flush DNS
+                await asyncio.sleep(15)  
+                
+                try:
+                    restart_client = docker.from_env()
+                    try:
+                        api_container = restart_client.containers.get("vllm-proxy-api")
+                        logger.info("Restarting API container to flush DNS cache...")
+                        api_container.restart(timeout=10)
+                        logger.info("API container restarted - DNS cache flushed")
+                    finally:
+                        restart_client.close()
+                except Exception as e:
+                    logger.error(f"Failed to restart API container: {e}")
+            
+            # Start the restart task in background
+            asyncio.create_task(delayed_api_restart())
                 
         except subprocess.TimeoutExpired:
             raise HTTPException(
@@ -470,10 +576,11 @@ async def switch_model(
             )
         
         return {
-            "status": "success",
-            "message": f"Switched to {model_id}",
+            "status": "switching",
+            "message": f"Switching to {model_id}",
             "model_id": model_id,
-            "info": "vLLM is restarting with the new model. This may take 30-60 seconds."
+            "info": "vLLM is loading the new model. Check /api/model-loading-status for progress.",
+            "estimated_time_seconds": 60
         }
         
     except HTTPException:
@@ -484,6 +591,82 @@ async def switch_model(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to switch model: {str(e)}"
         )
+
+
+@app.get("/api/model-loading-status")
+async def model_loading_status(token: str = Depends(verify_token)):
+    """
+    Check if vLLM is ready and which model is loaded.
+    Used by frontend to poll during model switching.
+    """
+    try:
+        # Try to connect to vLLM
+        models_response = await http_client.get(
+            f"{settings.upstream_base_url}/models",
+            timeout=3.0
+        )
+        
+        if models_response.status_code == 200:
+            models_data = models_response.json()
+            models = models_data.get("data", [])
+            
+            if models:
+                loaded_model = models[0].get("id", "unknown")
+                return {
+                    "status": "ready",
+                    "model_loaded": True,
+                    "current_model": loaded_model,
+                    "message": "vLLM is ready"
+                }
+        
+        # vLLM responded but no model loaded yet
+        return {
+            "status": "loading",
+            "model_loaded": False,
+            "current_model": None,
+            "message": "vLLM is starting up..."
+        }
+        
+    except Exception as e:
+        # vLLM not responding - still starting
+        return {
+            "status": "starting",
+            "model_loaded": False,
+            "current_model": None,
+            "message": "vLLM container is starting...",
+            "error": str(e)
+        }
+
+
+@app.post("/api/restart-api")
+async def restart_api(token: str = Depends(verify_token)):
+    """
+    Restart the API container (for DNS refresh after vLLM restart).
+    This endpoint schedules a restart and returns immediately.
+    """
+    async def delayed_api_restart():
+        """Restart API container after vLLM stabilizes"""
+        await asyncio.sleep(30)  # Wait for vLLM to fully initialize
+        try:
+            import docker
+            client = docker.from_env()
+            try:
+                api_container = client.containers.get("vllm-proxy-api")
+                logger.info("Restarting API container...")
+                api_container.restart(timeout=10)
+            finally:
+                client.close()
+        except Exception as e:
+            logger.error(f"Failed to restart API container: {e}")
+    
+    # Schedule restart in background
+    asyncio.create_task(delayed_api_restart())
+    
+    return {
+        "status": "restarting",
+        "message": "API will restart in 2 seconds to refresh DNS cache",
+        "info": "You may need to reconnect after restart"
+    }
 
 
 @app.post("/api/download-model")
@@ -503,23 +686,29 @@ async def download_model(
         import subprocess
         import os
         
-        script_path = "/workspace/scripts/download_model.sh"
+        logger.info(f"Starting automated download for model: {model_id}")
+        script_path = "/workspace/scripts/management/download_model.sh"
         
         # Check if script exists
         if not os.path.exists(script_path):
+            logger.error(f"Script not found: {script_path}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Download script not found. Run from host: ./scripts/download_model.sh"
+                detail=f"Download script not found at {script_path}. Run from host: ./scripts/management/download_model.sh"
             )
         
+        logger.info(f"Script found at: {script_path}")
         try:
-            # Start download in background
-            subprocess.Popen(
-                [script_path, model_id],
+            # Start download in background using bash explicitly
+            logger.info(f"Executing: bash {script_path} {model_id}")
+            process = subprocess.Popen(
+                ["bash", script_path, model_id],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                cwd="/workspace"
+                cwd="/workspace",
+                env=os.environ.copy()
             )
+            logger.info(f"Process started with PID: {process.pid}")
             
             return {
                 "status": "downloading",
@@ -528,14 +717,14 @@ async def download_model(
                 "info": "The system will download the model, update config, and restart vLLM automatically."
             }
         except Exception as e:
-            logger.error(f"Failed to start automated download: {e}")
+            logger.error(f"Failed to start automated download: {e}", exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to start download: {str(e)}"
             )
     else:
         # Return manual instructions
-        download_cmd = f"./scripts/download_model.sh {model_id}"
+        download_cmd = f"./scripts/management/download_model.sh {model_id}"
         
         return {
             "status": "manual",

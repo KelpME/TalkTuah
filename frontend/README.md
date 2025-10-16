@@ -108,7 +108,7 @@ python TuivLLM.py
 
 ### Themes and Appearance
 
-TuivLLM uses a btop-style configuration system. See [THEMES.md](THEMES.md) for complete documentation.
+TuivLLM uses a btop-style configuration system with theme support.
 
 **Quick start:**
 
@@ -128,8 +128,6 @@ color_theme = "dracula"
 **Live theme reload!** TuivLLM watches `~/.config/omarchy/current/theme/btop.theme` and updates colors in real-time when you switch themes. No restart needed!
 
 **Zero configuration:** Just run TuivLLM and it automatically matches your Omarchy theme. Switch themes with `omarchy-theme-next` and watch TuivLLM update instantly.
-
-See [SYSTEM_THEME.md](SYSTEM_THEME.md) for details on system theme integration.
 
 ### API Configuration
 

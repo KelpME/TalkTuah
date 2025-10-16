@@ -1,0 +1,27 @@
+/* Footer and Keybinding Styles */
+
+CustomFooter {
+    height: 1;
+    width: 100%;
+    layout: horizontal;
+}
+
+FooterBorder {
+    width: auto;
+    height: 1;
+}
+
+FooterEnd {
+    width: 1fr;
+    height: 1;
+}
+
+KeybindingButton {
+    width: auto;
+    height: 1;
+}
+
+FooterSpacer {
+    width: auto;
+    height: 1;
+}

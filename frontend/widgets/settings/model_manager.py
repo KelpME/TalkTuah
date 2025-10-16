@@ -6,8 +6,10 @@ from textual.message import Message
 from theme_loader import get_theme_loader
 from config import LMSTUDIO_URL, VLLM_API_KEY
 from settings import get_settings
+from utils.markup import strip_markup
 from ..layout.borders import SideBorder
 from .huggingface_models import get_autocomplete_suggestions, format_model_suggestion, POPULAR_MODELS
+from . import api_client
 import httpx
 
 
@@ -55,80 +57,65 @@ class ModelDownloadRequested(Message):
 class ModelManager(Static):
     """Widget for managing model downloads"""
     
-    CSS = """
-    ModelManager {
-        width: 100%;
-        height: auto;
-    }
-    
-    #model-download-box {
-        width: 100%;
-        height: auto;
-    }
-    
-    #model-download-input {
-        width: 100%;
-        height: 1;
-        background: $surface;
-        color: $text;
-        border: none;
-        padding: 0 1;
-        margin: 0;
-    }
-    
-    #model-download-input:focus {
-        background: $surface;
-        border: none;
-    }
-    
-    #model-list-container {
-        width: 100%;
-        height: auto;
-        max-height: 10;
-        overflow-y: auto;
-    }
-    
-    ModelListItem {
-        width: 100%;
-        height: 1;
-    }
-    """
+    # Styles defined in settings.tcss (shared with SettingsModal)
     
     def __init__(self, inner_width: int = 66):
         super().__init__()
         self.inner_width = inner_width
         self.filtered_models = []
+        self.downloaded_models = []
     
     def compose(self):
         theme = get_theme_loader()
         ai_color = theme.get_color("ai_color", "cyan")
-        
         # Download section
         yield Static(f"[{ai_color}]│ [dim]Download from HuggingFace:[/dim]{' ' * (self.inner_width - 26)} │[/]")
         with Horizontal(id="model-download-box"):
             yield SideBorder(color_key="ai_color")
             yield Input(
-                placeholder="Search models...",
+                placeholder="Start typing model name (e.g., Qwen/Qwen2.5-1.5B-Instruct)",
                 id="model-download-input"
             )
             yield SideBorder(color_key="ai_color")
         
-        download_help = "[dim]Type to filter, click or press Enter on a model to download[/dim]"
-        padding = max(0, self.inner_width - len(self.strip_markup(download_help)))
-        yield Static(f"[{ai_color}]│ {download_help}{' ' * padding} │[/]")
+        download_help = "[dim]Type to filter, click or press Enter to download[/dim]"
+        padding = max(0, self.inner_width - len(strip_markup(download_help)))
+        yield Static(f"[{ai_color}]│ {download_help}{' ' * padding} │[/]", id="download-help-text")
         
         # Model list container
         with Vertical(id="model-list-container"):
             pass
     
-    def strip_markup(self, text: str) -> str:
-        """Remove Rich markup tags from text"""
-        import re
-        return re.sub(r'\[.*?\]', '', text)
     
     async def on_mount(self) -> None:
-        """Initialize with all models"""
+        """Initialize with all models and fetch downloaded ones"""
+        # Fetch list of already downloaded models
+        settings = get_settings()
+        endpoint = settings.get("endpoint", LMSTUDIO_URL)
+        self.downloaded_models = await api_client.fetch_downloaded_models(endpoint)
+        
+        # Update help text with count
+        self.update_help_text()
+        
         await self.update_model_list("")
+    
+    def update_help_text(self):
+        """Update help text to show how many models are already downloaded"""
+        try:
+            theme = get_theme_loader()
+            ai_color = theme.get_color("ai_color", "cyan")
+            
+            downloaded_count = len(self.downloaded_models)
+            if downloaded_count > 0:
+                help_msg = f"[dim]Type to filter ({downloaded_count} already downloaded, excluded from list)[/dim]"
+            else:
+                help_msg = "[dim]Type to filter, click or press Enter to download[/dim]"
+            
+            padding = max(0, self.inner_width - len(strip_markup(help_msg)))
+            help_widget = self.query_one("#download-help-text", Static)
+            help_widget.update(f"[{ai_color}]│ {help_msg}{' ' * padding} │[/]")
+        except:
+            pass
     
     def on_input_changed(self, event: Input.Changed) -> None:
         """Filter models as user types"""
@@ -136,21 +123,38 @@ class ModelManager(Static):
             self.call_after_refresh(lambda: self.update_model_list(event.value))
     
     async def update_model_list(self, search_term: str) -> None:
-        """Update the model list based on search term"""
+        """Update the model list based on search term, excluding downloaded models"""
         container = self.query_one("#model-list-container", Vertical)
         
         # Clear existing items
         await container.remove_children()
         
-        # Filter models
+        # Filter models based on search
         if search_term:
-            self.filtered_models = get_autocomplete_suggestions(search_term)
+            candidate_models = get_autocomplete_suggestions(search_term)
         else:
-            self.filtered_models = POPULAR_MODELS[:20]  # Show first 20 by default
+            candidate_models = POPULAR_MODELS[:20]  # Show first 20 by default
+        
+        # Exclude already downloaded models
+        self.filtered_models = [
+            model for model in candidate_models 
+            if model not in self.downloaded_models
+        ]
         
         # Add model items
-        for model_id in self.filtered_models:
-            await container.mount(ModelListItem(model_id, self.inner_width))
+        if self.filtered_models:
+            for model_id in self.filtered_models:
+                await container.mount(ModelListItem(model_id, self.inner_width))
+        else:
+            # Show message if all models are downloaded
+            theme = get_theme_loader()
+            ai_color = theme.get_color("ai_color", "cyan")
+            if search_term:
+                msg = "[dim]No new models match your search[/dim]"
+            else:
+                msg = "[dim]All popular models already downloaded[/dim]"
+            padding = max(0, self.inner_width - len(strip_markup(msg)))
+            await container.mount(Static(f"[{ai_color}]│ {msg}{' ' * padding} │[/]"))
     
     async def on_model_download_requested(self, message: ModelDownloadRequested) -> None:
         """Handle model download request from list item"""
@@ -163,12 +167,20 @@ class ModelManager(Static):
         except:
             pass
         
+        # Add to downloaded list immediately to prevent duplicate downloads
+        if model_id not in self.downloaded_models:
+            self.downloaded_models.append(model_id)
+            self.update_help_text()
+        
         # Show confirmation
         self.notify(
             f"Starting download: {model_id}",
             severity="information",
             timeout=3
         )
+        
+        # Refresh the list to remove the downloading model
+        await self.update_model_list("")
         
         # Call API to get download instructions
         try:

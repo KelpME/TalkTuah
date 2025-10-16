@@ -16,7 +16,7 @@ class ChatRequest(BaseModel):
     top_p: Optional[float] = Field(default=1.0, ge=0.0, le=1.0)
     max_tokens: Optional[int] = Field(default=None, ge=1)
     stop: Optional[Union[str, List[str]]] = None
-    stream: Optional[bool] = False
+    stream: Optional[bool] = True
     n: Optional[int] = Field(default=1, ge=1)
     presence_penalty: Optional[float] = Field(default=0.0, ge=-2.0, le=2.0)
     frequency_penalty: Optional[float] = Field(default=0.0, ge=-2.0, le=2.0)

@@ -1,22 +1,6 @@
 from textual.widgets import Static
 from theme_loader import get_theme_loader
-
-
-def interpolate_color(color1: str, color2: str, factor: float) -> str:
-    c1 = color1.lstrip('#')
-    c2 = color2.lstrip('#')
-    
-    if len(c1) != 6 or len(c2) != 6:
-        return color1
-    
-    r1, g1, b1 = int(c1[0:2], 16), int(c1[2:4], 16), int(c1[4:6], 16)
-    r2, g2, b2 = int(c2[0:2], 16), int(c2[2:4], 16), int(c2[4:6], 16)
-    
-    r = int(r1 + (r2 - r1) * factor)
-    g = int(g1 + (g2 - g1) * factor)
-    b = int(b1 + (b2 - b1) * factor)
-    
-    return f"#{r:02x}{g:02x}{b:02x}"
+from utils.theme_helpers import interpolate_color
 
 
 class ChatMessage(Static):
