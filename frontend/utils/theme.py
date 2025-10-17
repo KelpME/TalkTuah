@@ -1,6 +1,10 @@
 """
-Theme and configuration loader for TuivLLM
-Similar to btop's configuration system
+Theme Loading and Management
+
+Loads Omarchy theme configurations and provides gradient colors
+for the TUI interface.
+
+Moved from theme_loader.py during Phase 4 refactoring.
 """
 
 import os
@@ -127,8 +131,9 @@ class ThemeLoader:
         """Load theme from system's current theme (omarchy/btop style)"""
         # Try to find btop theme file
         btop_theme_paths = [
-            Path.home() / ".config" / "omarchy" / "current" / "btop.theme",
-            Path.home() / ".config" / "btop" / "themes" / "current.theme",
+            Path.home() / ".config" / "omarchy" / "current" / "theme" / "btop.theme",  # Omarchy theme subdirectory
+            Path.home() / ".config" / "omarchy" / "current" / "btop.theme",  # Legacy location
+            Path.home() / ".config" / "btop" / "themes" / "current.theme",  # Standalone btop
         ]
         
         btop_theme = {}

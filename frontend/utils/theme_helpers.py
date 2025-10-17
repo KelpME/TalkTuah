@@ -1,6 +1,6 @@
 """Theme and color utilities"""
 
-from theme_loader import get_theme_loader
+from .theme import get_theme_loader
 
 
 def interpolate_color(color1: str, color2: str, factor: float) -> str:

@@ -1,3 +1,15 @@
+"""
+LLM API Client
+
+Handles communication with the vLLM Proxy API including:
+- Chat completions
+- Model queries
+- Settings integration
+- Error handling
+
+Moved from llm_client.py during Phase 4 refactoring.
+"""
+
 import httpx
 from typing import List, Dict, Optional
 import json
