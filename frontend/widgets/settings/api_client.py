@@ -114,6 +114,12 @@ async def get_download_progress(endpoint: str = LMSTUDIO_URL) -> dict:
     return {}
 
 
+# Alias for consistency
+async def fetch_download_progress(endpoint: str = LMSTUDIO_URL) -> dict:
+    """Fetch download progress (alias for get_download_progress)"""
+    return await get_download_progress(endpoint)
+
+
 async def fetch_model_loading_status(endpoint: str = LMSTUDIO_URL) -> dict:
     """
     Check if vLLM is ready and which model is loaded.

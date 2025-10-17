@@ -1,6 +1,6 @@
 from textual.widgets import Static
 from textual.containers import Horizontal
-from theme_loader import get_theme_loader
+from utils.theme import get_theme_loader
 from utils.theme_helpers import get_color_for_position
 
 

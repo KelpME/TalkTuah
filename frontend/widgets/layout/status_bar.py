@@ -1,6 +1,6 @@
 from textual.widgets import Static
 from textual.reactive import reactive
-from theme_loader import get_theme_loader
+from utils.theme import get_theme_loader
 import re
 
 

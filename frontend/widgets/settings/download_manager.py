@@ -1,7 +1,7 @@
 """Download progress management"""
 
 from textual.widgets import Static
-from theme_loader import get_theme_loader
+from utils.theme import get_theme_loader
 from config import LMSTUDIO_URL, VLLM_API_KEY
 from .utils import strip_markup
 from . import api_client

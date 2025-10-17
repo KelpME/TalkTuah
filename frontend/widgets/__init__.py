@@ -17,6 +17,9 @@ from .settings import (
     ModelManager, ModelDownloadRequested
 )
 
+# Download progress
+from .download_progress_bar import DownloadProgressBar
+
 __all__ = [
     # Chat
     "ChatMessage",
@@ -35,4 +38,6 @@ __all__ = [
     "ModelDownloadRequested",
     "TemperatureSlider",
     "TemperatureChanged",
+    # Download
+    "DownloadProgressBar",
 ]

@@ -1,7 +1,7 @@
 """Endpoint configuration widget"""
 
 from textual.widgets import Static
-from theme_loader import get_theme_loader
+from utils.theme import get_theme_loader
 
 
 class EndpointLine(Static, can_focus=True):

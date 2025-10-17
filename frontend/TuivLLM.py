@@ -10,15 +10,17 @@ from pathlib import Path
 import psutil
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
-from llm_client import LLMClient
+from utils import LLMClient
 from config import LMSTUDIO_URL, VLLM_MODEL
 
 import sys
-if 'theme_loader' in sys.modules:
-    del sys.modules['theme_loader']
-from theme_loader import get_theme_loader, reload_theme
+if 'utils.theme' in sys.modules:
+    del sys.modules['utils.theme']
+from utils import get_theme_loader, reload_theme
 
-from widgets import ChatMessage, ContainerBorder, SideBorder, StatusBar, CustomFooter, KeybindingButton, FooterBorder, FooterEnd, FooterSpacer, SettingsModal
+from widgets import ChatMessage, ContainerBorder, SideBorder, StatusBar, CustomFooter, KeybindingButton, FooterBorder, FooterEnd, FooterSpacer, SettingsModal, DownloadProgressBar
+from widgets.settings.model_option import ModelSelected
+from widgets.settings.download_started import DownloadStarted
 from textual.containers import Horizontal as HorizontalContainer
 
 
@@ -26,18 +28,47 @@ class OmarchyThemeWatcher(FileSystemEventHandler):
     def __init__(self, app):
         super().__init__()
         self.app = app
+        self.last_reload = 0
+        import time
+        self.time = time
+    
+    def _should_reload(self):
+        """Debounce rapid file changes"""
+        import time
+        now = time.time()
+        if now - self.last_reload < 0.5:  # Debounce 500ms
+            return False
+        self.last_reload = now
+        return True
     
     def on_modified(self, event):
+        self.app.log(f"File modified: {event.src_path}")
         if self.app.theme_watcher_enabled and ('theme' in event.src_path or 'btop.theme' in event.src_path):
-            self.app.call_from_thread(self.app.reload_theme_colors)
+            if self._should_reload():
+                self.app.log(f"Theme modified detected: {event.src_path}")
+                self.app.call_from_thread(self.app.reload_theme_colors)
     
     def on_created(self, event):
-        if self.app.theme_watcher_enabled and Path(event.src_path).name == 'theme':
-            self.app.call_from_thread(self.app.reload_theme_colors)
+        self.app.log(f"File created: {event.src_path}")
+        if self.app.theme_watcher_enabled and ('theme' in event.src_path or Path(event.src_path).name == 'theme'):
+            if self._should_reload():
+                self.app.log(f"Theme created detected: {event.src_path}")
+                self.app.call_from_thread(self.app.reload_theme_colors)
     
     def on_moved(self, event):
-        if self.app.theme_watcher_enabled and hasattr(event, 'dest_path') and Path(event.dest_path).name == 'theme':
-            self.app.call_from_thread(self.app.reload_theme_colors)
+        self.app.log(f"File moved: {event.src_path} -> {getattr(event, 'dest_path', 'unknown')}")
+        if self.app.theme_watcher_enabled and hasattr(event, 'dest_path'):
+            if 'theme' in event.dest_path:
+                if self._should_reload():
+                    self.app.log(f"Theme moved detected: {event.dest_path}")
+                    self.app.call_from_thread(self.app.reload_theme_colors)
+    
+    def on_deleted(self, event):
+        """Handle theme deletion (symlink recreation triggers create after this)"""
+        self.app.log(f"File deleted: {event.src_path}")
+        if self.app.theme_watcher_enabled and 'theme' in event.src_path:
+            # Don't reload on delete - wait for the create event
+            self.app.log(f"Theme deleted (waiting for recreation): {event.src_path}")
 
 
 class TuivLLM(App):
@@ -56,6 +87,7 @@ class TuivLLM(App):
         ("ctrl+l", "clear_chat", "Clear"),
         ("ctrl+s", "settings", "Settings"),
         ("ctrl+r", "reconnect", "Reconnect"),
+        ("ctrl+t", "reload_theme", "Reload Theme"),
     ]
     
     messages: reactive[List[Dict]] = reactive([])
@@ -69,6 +101,7 @@ class TuivLLM(App):
         self.theme_watcher_enabled = True
         self.is_connected = False
         self.status_update_timer = None
+        self.download_poll_timer = None
     
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -76,6 +109,7 @@ class TuivLLM(App):
         with Container(id="main-box"):
             yield ContainerBorder("STATUS", color_key="user_color", position="top", border_type="corner")
             yield StatusBar(id="status-bar")
+            yield DownloadProgressBar(id="download-progress")
             yield ContainerBorder("CONVERSATION", color_key="ai_color", position="top", border_type="divider")
             
             with HorizontalContainer(id="conversation-box"):
@@ -201,6 +235,36 @@ class TuivLLM(App):
         except:
             pass
     
+    def start_status_polling(self):
+        """Start polling status bar every second (e.g., during model loading)"""
+        # Stop existing timer if any
+        if self.status_update_timer:
+            self.status_update_timer.stop()
+        
+        # Start new timer - update every 1 second
+        self.status_update_timer = self.set_interval(1.0, self.poll_status_bar)
+        self.log("Started status bar polling (1s intervals)")
+    
+    def poll_status_bar(self):
+        """Poll status bar and stop when model is fully loaded"""
+        self.update_status_bar_right(check_connection=True)
+        
+        # Check if model is loaded
+        try:
+            status_bar = self.query_one("#status-bar", StatusBar)
+            # If status shows "Connected", model is loaded - stop polling
+            if "[green]● Connected[/green]" in status_bar.status_text:
+                self.stop_status_polling()
+        except:
+            pass
+    
+    def stop_status_polling(self):
+        """Stop status bar polling"""
+        if self.status_update_timer:
+            self.status_update_timer.stop()
+            self.status_update_timer = None
+            self.log("Stopped status bar polling")
+    
     def apply_theme_to_css(self):
         theme = get_theme_loader()
         from textual.color import Color
@@ -241,61 +305,114 @@ class TuivLLM(App):
             pass
     
     def start_theme_watcher(self):
-        watch_dir = Path.home() / '.config/omarchy/current'
-        if watch_dir.exists():
-            self.theme_observer = Observer()
-            event_handler = OmarchyThemeWatcher(self)
-            self.theme_observer.schedule(event_handler, str(watch_dir), recursive=True)
-            self.theme_observer.start()
+        # Watch both the symlink directory and the theme subdirectory
+        watch_dirs = [
+            Path.home() / '.config/omarchy/current',  # For theme symlink changes
+            Path.home() / '.config/omarchy/current/theme',  # For theme file changes
+        ]
+        
+        self.theme_observer = Observer()
+        event_handler = OmarchyThemeWatcher(self)
+        
+        for watch_dir in watch_dirs:
+            if watch_dir.exists():
+                self.theme_observer.schedule(event_handler, str(watch_dir), recursive=True)
+                self.log(f"Watching theme directory: {watch_dir}")
+        
+        self.theme_observer.start()
     
     def reload_theme_colors(self):
+        self.log("Reloading theme colors...")
         reload_theme()
         self.apply_theme_to_css()
+        self.log("Theme CSS applied")
         
         try:
-            self.query_one(StatusBar).refresh()
+            # Refresh status bar and progress bar with layout update
+            status = self.query_one(StatusBar)
+            status.refresh(repaint=True, layout=True)
+            try:
+                progress = self.query_one(DownloadProgressBar)
+                progress.refresh(repaint=True, layout=True)
+            except:
+                pass
             
+            # Refresh all border components with repaint
             for border in self.query(ContainerBorder):
-                border.refresh()
+                border.refresh(repaint=True)
             for border in self.query(SideBorder):
-                border.refresh()
-            for button in self.query(KeybindingButton):
-                button.refresh()
+                border.refresh(repaint=True)
             for border in self.query(FooterBorder):
-                border.refresh()
+                border.refresh(repaint=True)
             for border in self.query(FooterEnd):
-                border.refresh()
+                border.refresh(repaint=True)
             for spacer in self.query(FooterSpacer):
-                spacer.refresh()
+                spacer.refresh(repaint=True)
             
+            # Refresh footer buttons
+            for button in self.query(KeybindingButton):
+                button.refresh(repaint=True)
+            try:
+                self.query_one(CustomFooter).refresh(repaint=True)
+            except:
+                pass
+            
+            # Refresh chat messages
             messages_scroll = self.query_one("#messages-scroll", VerticalScroll)
             for widget in messages_scroll.query(ChatMessage):
-                widget.refresh()
-        except:
-            pass
+                widget.refresh(repaint=True)
+            
+            # Refresh settings modal if open
+            try:
+                modal = self.query_one(SettingsModal)
+                modal.refresh(repaint=True, layout=True)
+                # Refresh all child widgets in modal
+                for widget in modal.query("*"):
+                    try:
+                        widget.refresh()
+                    except:
+                        pass
+            except:
+                pass
+                
+        except Exception as e:
+            self.log(f"Error refreshing widgets: {e}")
         
+        # Force full screen refresh
+        try:
+            self.refresh(repaint=True, layout=True)
+        except Exception as e:
+            self.log(f"Error refreshing app: {e}")
+        
+        self.log("Theme reload complete")
         self.notify("Theme updated", severity="information", timeout=2)
     
     async def add_system_message(self, message: str):
         """Add a system message to the chat"""
-        messages_scroll = self.query_one("#messages-scroll", VerticalScroll)
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        system_label = Label(f"[dim]╭──╮ SYSTEM │ {timestamp} ╭────────────────────────────────────╮\n│ {message}\n╰───────────────────────────────────────────────────────────╯[/dim]", classes="system-msg")
-        await messages_scroll.mount(system_label, before=0)  # Add at top
-        messages_scroll.scroll_home(animate=False)  # Scroll to top
+        try:
+            messages_scroll = self.query_one("#messages-scroll", VerticalScroll)
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            system_label = Label(f"[dim]╭──╮ SYSTEM │ {timestamp} ╭────────────────────────────────────╮\n│ {message}\n╰───────────────────────────────────────────────────────────╯[/dim]", classes="system-msg")
+            await messages_scroll.mount(system_label, before=0)  # Add at top
+            messages_scroll.scroll_home(animate=False)  # Scroll to top
+        except Exception as e:
+            self.log(f"Error adding system message: {e}")
     
     async def add_message(self, role: str, content: str):
         """Add a message to the chat - adds at bottom, pushing older messages up"""
-        messages_scroll = self.query_one("#messages-scroll", VerticalScroll)
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        
-        msg = ChatMessage(role, content, timestamp)
-        await messages_scroll.mount(msg)  # Add at bottom
-        messages_scroll.scroll_end(animate=False)  # Keep scrolled to bottom (latest)
-        
-        # Refresh all messages to update gradient colors
-        for message in messages_scroll.query(ChatMessage):
-            message.refresh()
+        try:
+            messages_scroll = self.query_one("#messages-scroll", VerticalScroll)
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            
+            msg = ChatMessage(role, content, timestamp)
+            await messages_scroll.mount(msg)  # Add at bottom
+            messages_scroll.scroll_end(animate=False)  # Keep scrolled to bottom (latest)
+            
+            # Refresh all messages to update gradient colors
+            for message in messages_scroll.query(ChatMessage):
+                message.refresh()
+        except Exception as e:
+            self.log(f"Error adding message: {e}")
     
     def clear_system_messages(self):
         """Clear all system messages from the chat"""
@@ -366,9 +483,15 @@ class TuivLLM(App):
         """Reconnect to LLM"""
         try:
             self.llm_client = LLMClient()
-            self.call_later(self.add_system_message, "Reconnected to LLM endpoint.")
+            self.notify("Reconnected to LLM", severity="information")
+            self.update_status_bar_right(check_connection=True)
         except Exception as e:
-            self.log(f"Error reconnecting: {e}")
+            self.notify(f"Reconnection failed: {str(e)}", severity="error")
+    
+    def action_reload_theme(self) -> None:
+        """Manually reload theme from Omarchy"""
+        self.log("Manual theme reload triggered via Ctrl+T")
+        self.reload_theme_colors()
     
     def action_settings(self) -> None:
         """Open settings modal"""
@@ -445,8 +568,84 @@ class TuivLLM(App):
         theme_display = "Omarchy Theme" if theme_name == "system" else theme_name
         self.notify(f"Theme changed to: {theme_display}", severity="information", timeout=2)
     
+    def on_download_started(self, message: DownloadStarted) -> None:
+        """Handle download started - begin polling for progress"""
+        self.log(f"DownloadStarted message received for: {message.model_id}")
+        
+        # Initialize progress bar with downloading state immediately
+        try:
+            progress_bar = self.query_one("#download-progress", DownloadProgressBar)
+            progress_bar.status = "downloading"
+            progress_bar.model_name = message.model_id
+            progress_bar.progress = 0
+            progress_bar.refresh()
+            self.log("Progress bar initialized and refreshed")
+        except Exception as e:
+            self.log(f"Failed to initialize progress bar: {e}")
+        
+        # Start polling download progress every 2 seconds
+        if self.download_poll_timer:
+            self.download_poll_timer.stop()
+        
+        self.download_poll_timer = self.set_interval(2.0, self.poll_download_progress)
+        self.notify(f"Download tracking started: {message.model_id}", severity="information", timeout=3)
+    
+    async def poll_download_progress(self) -> None:
+        """Poll download progress and update progress bar"""
+        try:
+            progress_bar = self.query_one("#download-progress", DownloadProgressBar)
+            should_continue = await progress_bar.poll_progress()
+            
+            # Stop polling if download is complete or failed
+            if not should_continue and self.download_poll_timer:
+                self.download_poll_timer.stop()
+                self.download_poll_timer = None
+        except Exception as e:
+            self.log(f"Download progress poll error: {e}")
+    
+    async def on_model_selected(self, message: ModelSelected) -> None:
+        """Handle model selected from download progress bar (load button)"""
+        # Same as switching from settings - trigger model switch
+        from settings import get_settings
+        from config import LMSTUDIO_URL
+        from widgets.settings import api_client
+        
+        settings = get_settings()
+        settings.set("selected_model", message.model_name)
+        
+        # Reset progress bar immediately
+        try:
+            progress_bar = self.query_one("#download-progress", DownloadProgressBar)
+            progress_bar.reset()
+        except:
+            pass
+        
+        # Call API to switch model
+        try:
+            endpoint = settings.get("endpoint", LMSTUDIO_URL)
+            self.notify(f"Switching to {message.model_name}...", severity="information", timeout=2)
+            
+            data = await api_client.switch_model(message.model_name, endpoint)
+            self.notify(
+                f"✓ {data.get('message')}\n{data.get('info')}",
+                severity="information",
+                timeout=10
+            )
+            
+            # Start polling status bar to show loading progress
+            self.start_status_polling()
+                
+        except Exception as e:
+            self.notify(f"Error switching model: {str(e)}", severity="error", timeout=5)
+    
     def action_quit(self) -> None:
         """Quit the application"""
+        # Stop timers
+        if self.download_poll_timer:
+            self.download_poll_timer.stop()
+        if self.status_update_timer:
+            self.status_update_timer.stop()
+        
         # Stop theme watcher
         if self.theme_observer:
             self.theme_observer.stop()

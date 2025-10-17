@@ -21,6 +21,12 @@ Header {
     width: 100%;
 }
 
+#download-progress {
+    height: auto;
+    width: 100%;
+    min-height: 0;
+}
+
 #conversation-box {
     width: 100%;
     height: 1fr;

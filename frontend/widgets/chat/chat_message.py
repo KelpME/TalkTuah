@@ -1,5 +1,5 @@
 from textual.widgets import Static
-from theme_loader import get_theme_loader
+from utils.theme import get_theme_loader
 from utils.theme_helpers import interpolate_color
 
 

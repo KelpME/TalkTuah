@@ -3,7 +3,7 @@
 from textual.widgets import Static, Input
 from textual.containers import Vertical, Horizontal
 from textual.message import Message
-from theme_loader import get_theme_loader
+from utils.theme import get_theme_loader
 from config import LMSTUDIO_URL, VLLM_API_KEY
 from settings import get_settings
 from utils.markup import strip_markup
@@ -14,13 +14,15 @@ import httpx
 
 
 class ModelListItem(Static, can_focus=True):
-    """Clickable model list item"""
+    """Clickable model list item - requires double-click to download"""
     
     def __init__(self, model_id: str, inner_width: int = 66):
         super().__init__()
         self.model_id = model_id
         self.inner_width = inner_width
         self.can_focus = True
+        self.click_count = 0
+        self.last_click_time = 0
     
     def render(self) -> str:
         theme = get_theme_loader()
@@ -29,19 +31,50 @@ class ModelListItem(Static, can_focus=True):
         
         # Format with VRAM info
         display_text = format_model_suggestion(self.model_id)
-        padding = max(0, self.inner_width - len(display_text))
         
-        if self.has_focus:
-            return f"[{ai_color}]│ [{user_color}]▶ {display_text}[/]{' ' * padding} │[/]"
+        # Add double-click hint
+        if self.click_count == 1:
+            hint = " [dim](click again to download)[/dim]"
+        else:
+            hint = ""
+        
+        display_with_hint = display_text + hint
+        padding = max(0, self.inner_width - len(strip_markup(display_with_hint)))
+        
+        if self.has_focus or self.click_count == 1:
+            return f"[{ai_color}]│ [{user_color}]▶ {display_with_hint}[/]{' ' * padding} │[/]"
         else:
             return f"[{ai_color}]│ [dim]{display_text}[/dim]{' ' * padding} │[/]"
     
     def on_click(self) -> None:
-        """Handle click on model item"""
-        self.post_message(ModelDownloadRequested(self.model_id))
+        """Handle click on model item - requires double-click"""
+        import time
+        current_time = time.time()
+        
+        # Reset if more than 2 seconds since last click
+        if current_time - self.last_click_time > 2.0:
+            self.click_count = 0
+        
+        self.click_count += 1
+        self.last_click_time = current_time
+        
+        if self.click_count >= 2:
+            # Double-click confirmed - trigger download
+            self.post_message(ModelDownloadRequested(self.model_id))
+            self.click_count = 0
+        else:
+            # First click - show hint
+            self.refresh()
+            # Reset after 2 seconds
+            self.set_timer(2.0, self._reset_click_count)
+    
+    def _reset_click_count(self):
+        """Reset click count and refresh"""
+        self.click_count = 0
+        self.refresh()
     
     def on_key(self, event) -> None:
-        """Handle enter key"""
+        """Handle enter key - immediate download"""
         if event.key == "enter":
             self.post_message(ModelDownloadRequested(self.model_id))
 
@@ -182,7 +215,7 @@ class ModelManager(Static):
         # Refresh the list to remove the downloading model
         await self.update_model_list("")
         
-        # Call API to get download instructions
+        # Call API to start download
         try:
             settings = get_settings()
             endpoint = settings.get("endpoint", LMSTUDIO_URL)
@@ -204,6 +237,9 @@ class ModelManager(Static):
                             severity="information",
                             timeout=5
                         )
+                        # Post message to close settings and start progress tracking
+                        from .download_started import DownloadStarted
+                        self.post_message(DownloadStarted(model_id))
                     else:
                         command = data.get('command', '')
                         self.notify(

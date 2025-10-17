@@ -2,7 +2,7 @@
 
 from textual.widgets import Static
 from textual.message import Message
-from theme_loader import get_theme_loader
+from utils.theme import get_theme_loader
 
 
 class SliderValueChanged(Message):

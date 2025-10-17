@@ -1,7 +1,7 @@
 from textual.widgets import Static, Label, Input, Button, Select
 from textual.containers import Container, Vertical, Horizontal as HorizontalContainer
 from textual.screen import ModalScreen
-from theme_loader import get_theme_loader
+from utils.theme import get_theme_loader
 from pathlib import Path
 from version import __version__
 from config import LMSTUDIO_URL, VLLM_API_KEY
@@ -17,6 +17,7 @@ from .max_tokens_slider import MaxTokensSlider, MaxTokensChanged
 from .huggingface_models import get_model_info
 from .endpoint_widget import EndpointLine
 from .download_manager import DownloadManager
+from .download_started import DownloadStarted
 from .utils import strip_markup
 from . import api_client
 import asyncio
@@ -156,6 +157,17 @@ class SettingsModal(ModalScreen):
         endpoint = self.settings.get("endpoint", LMSTUDIO_URL)
         return await api_client.fetch_active_model(endpoint)
     
+    async def get_downloading_model(self):
+        """Get the currently downloading model if any"""
+        try:
+            endpoint = self.settings.get("endpoint", LMSTUDIO_URL)
+            progress_data = await api_client.fetch_download_progress(endpoint)
+            if progress_data.get("status") == "downloading":
+                return progress_data.get("model")
+        except:
+            pass
+        return None
+    
     def get_available_themes(self) -> list:
         """Get list of available themes"""
         themes = ["system"]  # Always include system theme
@@ -191,9 +203,14 @@ class SettingsModal(ModalScreen):
             # Get currently active model from vLLM (not from settings)
             active_model = await self.get_active_model()
             
+            # Check which model is currently downloading
+            downloading_model = await self.get_downloading_model()
+            
             # Add model options - mark the one that's actually loaded in vLLM
+            # and disable the one that's downloading
             for model in models:
-                await model_list.mount(ModelOption(model, model == active_model, inner_width))
+                is_downloading = (model == downloading_model)
+                await model_list.mount(ModelOption(model, model == active_model, inner_width, is_downloading))
         else:
             # Show error
             theme = get_theme_loader()
@@ -243,6 +260,12 @@ class SettingsModal(ModalScreen):
                 severity="information",
                 timeout=10
             )
+            
+            # Start polling status bar in main app
+            self.app.start_status_polling()
+            
+            # Close settings menu after successful switch
+            self.dismiss()
                 
         except Exception as e:
             self.notify(f"Error switching model: {str(e)}", severity="error", timeout=5)
@@ -251,6 +274,13 @@ class SettingsModal(ModalScreen):
         """Handle theme selection"""
         self.save_settings()
         self.dismiss(message.theme_name)
+    
+    def on_download_started(self, message: DownloadStarted) -> None:
+        """Handle download start - forward to app and close settings modal"""
+        # Forward the message to the main app before dismissing
+        self.app.post_message(DownloadStarted(message.model_id))
+        self.save_settings()
+        self.dismiss(None)
     
     def save_settings(self):
         """Save all settings"""
