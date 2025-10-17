@@ -54,7 +54,14 @@ test:
 
 bench:
 	@echo "Running benchmark..."
-	python bench/latency.py
+	@if [ -f .env ]; then \
+		export $$(grep DEFAULT_MODEL .env | xargs) && \
+		export $$(grep PROXY_API_KEY .env | xargs) && \
+		python bench/latency.py; \
+	else \
+		echo "Error: .env file not found. Run 'cp .env.example .env' first."; \
+		exit 1; \
+	fi
 
 install-frontend:
 	@echo "Installing frontend dependencies..."
