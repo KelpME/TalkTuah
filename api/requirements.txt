@@ -6,3 +6,4 @@ pydantic-settings==2.6.0
 python-multipart==0.0.12
 slowapi==0.1.9
 docker==7.1.0
+huggingface-hub==0.20.0
