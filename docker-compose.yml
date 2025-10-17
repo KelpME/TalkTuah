@@ -26,6 +26,7 @@ services:
       - "${GPU_MEMORY_UTILIZATION:-0.75}"
       - --max-num-seqs
       - "16"
+      - --enforce-eager
     environment:
       - HF_TOKEN=${HF_TOKEN}
       - HF_HOME=/workspace/models
@@ -58,7 +59,7 @@ services:
 
   api:
     build:
-      context: ./apps/api
+      context: ./api
       dockerfile: Dockerfile
     container_name: vllm-proxy-api
     networks:
@@ -69,6 +70,8 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS:-*}
       - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-60}
       - MODELS_DIR=/workspace/models
+      - HF_HOME=/workspace/models
+      - HF_TOKEN=${HF_TOKEN}
     ports:
       - "8787:8787"
     volumes:

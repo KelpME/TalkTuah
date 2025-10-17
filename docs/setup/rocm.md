@@ -148,6 +148,38 @@ sudo usermod -aG docker $USER
 # Log out and back in
 ```
 
+### GPU Hang during "Capturing CUDA graphs"
+
+**Symptoms:**
+```
+Capturing CUDA graphs (mixed prefill-decode, FULL): 14%|█▍ | 1/7
+HW Exception by GPU node-1: GPU Hang
+Container exits with code 139
+```
+
+**Cause:** CUDA graph compilation is not fully stable on some AMD GPUs (especially APUs like the AI Max+ 395)
+
+**Solution:**
+Disable CUDA graph compilation by adding `--enforce-eager` flag to `docker-compose.yml`:
+
+```yaml
+services:
+  vllm:
+    command:
+      - vllm
+      - serve
+      - ${DEFAULT_MODEL}
+      # ... other flags ...
+      - --enforce-eager  # Add this line
+```
+
+**Trade-offs:**
+- ✅ **Stable** - No more GPU hangs
+- ❌ **Slower** - ~40-50% performance reduction
+- ℹ️ **Optional** - Try without it first; only add if you experience hangs
+
+**Alternative:** Some models work fine without this flag. Test each model individually.
+
 ## Performance Tips
 
 ### 1. Optimize Memory Usage
