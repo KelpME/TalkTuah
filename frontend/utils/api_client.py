@@ -18,7 +18,7 @@ from config import (
     LMSTUDIO_TIMEOUT, LMSTUDIO_MAX_TOKENS, 
     LMSTUDIO_TEMPERATURE, LLM_SYSTEM_PROMPT
 )
-from settings import get_settings
+from user_preferences import get_settings
 
 
 class LLMClient:
@@ -27,7 +27,7 @@ class LLMClient:
     def __init__(self, base_url: str = None, api_key: str = VLLM_API_KEY):
         # Read endpoint and model from settings if not provided
         if base_url is None:
-            from settings import get_settings
+            from user_preferences import get_settings
             settings = get_settings()
             base_url = settings.get("endpoint", VLLM_API_URL)
             # Use selected model from settings, or default from config

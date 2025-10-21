@@ -42,33 +42,27 @@ class OmarchyThemeWatcher(FileSystemEventHandler):
         return True
     
     def on_modified(self, event):
-        self.app.log(f"File modified: {event.src_path}")
         if self.app.theme_watcher_enabled and ('theme' in event.src_path or 'btop.theme' in event.src_path):
             if self._should_reload():
-                self.app.log(f"Theme modified detected: {event.src_path}")
+                self.app.log(f"[Theme] Reloading theme from {event.src_path}")
                 self.app.call_from_thread(self.app.reload_theme_colors)
     
     def on_created(self, event):
-        self.app.log(f"File created: {event.src_path}")
         if self.app.theme_watcher_enabled and ('theme' in event.src_path or Path(event.src_path).name == 'theme'):
             if self._should_reload():
-                self.app.log(f"Theme created detected: {event.src_path}")
+                self.app.log(f"[Theme] Loading new theme from {event.src_path}")
                 self.app.call_from_thread(self.app.reload_theme_colors)
     
     def on_moved(self, event):
-        self.app.log(f"File moved: {event.src_path} -> {getattr(event, 'dest_path', 'unknown')}")
         if self.app.theme_watcher_enabled and hasattr(event, 'dest_path'):
             if 'theme' in event.dest_path:
                 if self._should_reload():
-                    self.app.log(f"Theme moved detected: {event.dest_path}")
+                    self.app.log(f"[Theme] Reloading theme from {event.dest_path}")
                     self.app.call_from_thread(self.app.reload_theme_colors)
     
     def on_deleted(self, event):
         """Handle theme deletion (symlink recreation triggers create after this)"""
-        self.app.log(f"File deleted: {event.src_path}")
-        if self.app.theme_watcher_enabled and 'theme' in event.src_path:
-            # Don't reload on delete - wait for the create event
-            self.app.log(f"Theme deleted (waiting for recreation): {event.src_path}")
+        # Silently ignore delete events - theme recreation will trigger create event
 
 
 class TuivLLM(App):
@@ -437,7 +431,7 @@ class TuivLLM(App):
             status_bar.status_text = "\n[yellow]● Processing...[/yellow]"
             
             # Log current settings
-            from settings import get_settings
+            from user_preferences import get_settings
             settings = get_settings()
             temp = settings.get("temperature", 0.7)
             self.log(f"[bold cyan]Using temperature: {temp}[/bold cyan]")
@@ -606,7 +600,7 @@ class TuivLLM(App):
     async def on_model_selected(self, message: ModelSelected) -> None:
         """Handle model selected from download progress bar (load button)"""
         # Same as switching from settings - trigger model switch
-        from settings import get_settings
+        from user_preferences import get_settings
         from config import LMSTUDIO_URL
         from widgets.settings import api_client
         

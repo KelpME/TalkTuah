@@ -1,6 +1,5 @@
 from textual.widgets import Static
-from utils.theme import get_theme_loader
-from utils.theme_helpers import interpolate_color
+from utils.theme import get_theme_loader, get_color_for_position, interpolate_color
 
 
 class ChatMessage(Static):

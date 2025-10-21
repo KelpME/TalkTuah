@@ -1,7 +1,7 @@
 from textual.widgets import Static
 from textual.containers import Horizontal
 from utils.theme import get_theme_loader
-from utils.theme_helpers import get_color_for_position
+from utils.theme import get_color_for_position
 
 
 class KeybindingButton(Static):

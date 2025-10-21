@@ -34,17 +34,30 @@ TEST_PROMPT = "Write a short paragraph about the importance of artificial intell
 
 
 def get_gpu_memory() -> Optional[int]:
-    """Get current GPU memory usage in MB using nvidia-smi."""
+    """Get current GPU memory usage in MB using rocm-smi (AMD GPU)."""
     try:
         result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+            ["rocm-smi", "--showmeminfo", "vram", "--csv"],
             capture_output=True,
             text=True,
             timeout=5
         )
         if result.returncode == 0:
-            # Return first GPU's memory usage
-            return int(result.stdout.strip().split("\n")[0])
+            # Parse CSV output to get used VRAM
+            lines = result.stdout.strip().split("\n")
+            # Look for used memory in output
+            for line in lines[1:]:  # Skip header
+                if "," in line:
+                    # Extract used memory value (typically in MB)
+                    parts = line.split(",")
+                    if len(parts) > 1:
+                        try:
+                            # rocm-smi shows memory in MB
+                            return int(float(parts[1].strip()))
+                        except (ValueError, IndexError):
+                            pass
+    except FileNotFoundError:
+        print(f"Warning: rocm-smi not found. Install ROCm tools to enable GPU memory tracking.")
     except Exception as e:
         print(f"Warning: Could not get GPU memory: {e}")
     return None

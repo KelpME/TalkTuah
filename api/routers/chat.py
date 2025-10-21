@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from config import settings
 from models import ChatRequest
 from auth import verify_token
-from utils import stream_chat_response, get_http_client, get_fresh_http_client
+from utils import stream_chat_response, request_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -41,55 +41,16 @@ async def chat_completion(
     )
     
     try:
-        # Make request with retry logic
-        max_retries = 10
-        retry_delay = 4
-        
-        upstream_response = None
-        last_error = None
-        
-        for attempt in range(max_retries):
-            try:
-                if attempt == 0:
-                    # First attempt: use cached client
-                    client_to_use = get_http_client()
-                    timeout = settings.stream_timeout if is_streaming else settings.upstream_timeout
-                else:
-                    # Retry: fresh client for DNS refresh
-                    logger.info(
-                        f"Attempt {attempt + 1}/{max_retries} - "
-                        f"retrying with fresh DNS after {retry_delay}s..."
-                    )
-                    await asyncio.sleep(retry_delay)
-                    client_to_use = await get_fresh_http_client()
-                    timeout = 10.0
-                
-                upstream_response = await client_to_use.post(
-                    upstream_url,
-                    json=request_data,
-                    timeout=timeout,
-                )
-                
-                # Close fresh client if we created one
-                if attempt > 0:
-                    await client_to_use.aclose()
-                
-                break  # Success - exit retry loop
-                
-            except (httpx.ConnectError, httpx.RemoteProtocolError, httpx.TimeoutException) as err:
-                last_error = err
-                if attempt > 0:
-                    try:
-                        await client_to_use.aclose()
-                    except:
-                        pass
-                
-                if attempt == max_retries - 1:
-                    logger.error(f"All {max_retries} retry attempts failed. Last error: {err}")
-                    raise
-        
-        if upstream_response is None:
-            raise last_error or Exception("Failed to connect after retries")
+        # Use retry utility with DNS refresh on connection errors
+        timeout = settings.stream_timeout if is_streaming else settings.upstream_timeout
+        upstream_response = await request_with_retry(
+            method="POST",
+            url=upstream_url,
+            json=request_data,
+            timeout=timeout,
+            max_retries=10,
+            retry_delay=4.0
+        )
         
         # Handle errors
         if upstream_response.status_code >= 400:

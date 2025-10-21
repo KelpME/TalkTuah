@@ -1,0 +1,525 @@
+# TalkTuah Project Structure Documentation
+# Generated: 2025-01-XX
+# 
+# This document lists every folder and file in the TalkTuah project with
+# descriptions of their basic functions.
+
+================================================================================
+ROOT DIRECTORY
+================================================================================
+
+/
+├── .dockerignore
+│   Empty file for Docker build context filtering.
+│
+├── .editorconfig
+│   Editor configuration for consistent coding styles across different IDEs.
+│   Sets charset, line endings, indentation (spaces for Python/YAML, tabs for Makefile).
+│
+├── .env (not in git)
+│   Environment configuration file containing API keys, model settings, and service URLs.
+│   Generated from .env.example.
+│
+├── .env.example
+│   Template environment file with default values and comments.
+│   Contains PROXY_API_KEY, HF_TOKEN, DEFAULT_MODEL, GPU settings.
+│
+├── .gitignore
+│   Git ignore rules for Python cache, virtual environments, logs, models, and configs.
+│   Excludes .env files but keeps .env.example.
+│
+├── Makefile
+│   Build and command automation for the project.
+│   Provides commands: setup, up, down, logs, restart, build, clean, test, bench, frontend, apply.
+│
+├── README.md
+│   Main project documentation with quick start guide, features, and setup instructions.
+│   Describes the TalkTuah terminal UI chatbot with vLLM backend and Omarchy theme integration.
+│
+└── docker-compose.yml
+    Docker Compose configuration defining vLLM server and API proxy services.
+    Configures ROCm GPU support, volumes, networks, and environment variables.
+
+
+================================================================================
+API FOLDER - /api
+================================================================================
+
+Backend API service providing OpenAI-compatible proxy to vLLM with authentication
+and model management features.
+
+/api
+├── .dockerignore
+│   Excludes Python cache, virtual envs, tests, and development files from Docker builds.
+│
+├── Dockerfile
+│   Multi-stage Docker build for the FastAPI proxy service.
+│   Installs Python 3.11, Docker CLI, huggingface-cli, and application dependencies.
+│
+├── auth.py
+│   Bearer token authentication using FastAPI Security.
+│   Verifies API key from PROXY_API_KEY environment variable.
+│
+├── config.py
+│   Pydantic settings model loading configuration from environment variables.
+│   Manages API keys, CORS origins, rate limits, and timeout settings.
+│
+├── main.py
+│   FastAPI application entry point.
+│   Configures CORS, rate limiting, registers routers, and handles shutdown events.
+│
+├── models.py
+│   Pydantic data models for API requests and responses.
+│   Defines ChatMessage, ChatRequest, HealthResponse, and ErrorResponse schemas.
+│
+├── requirements.txt
+│   Python dependencies for the API service.
+│   Includes FastAPI, uvicorn, httpx, pydantic, slowapi, docker, and huggingface-hub.
+│
+├── /lib (Business Logic Services)
+│   ├── __init__.py
+│   │   Exports VLLMService, DockerService, ModelService, and DownloadService.
+│   │
+│   ├── docker.py
+│   │   Docker container management for vLLM and API containers.
+│   │   Handles container recreation, restarts, and DNS cache flushing.
+│   │
+│   ├── downloads.py
+│   │   Model download management using pure Python and huggingface_hub.
+│   │   Tracks download progress, handles errors, and supports model deletion.
+│   │
+│   ├── models.py
+│   │   Model management operations for listing, switching, and verifying models.
+│   │   Updates .env file with selected model and manages HuggingFace cache.
+│   │
+│   └── vllm.py
+│       vLLM server interaction layer.
+│       Health checks, model loading status, metrics retrieval, and model queries.
+│
+├── /routers (API Route Handlers)
+│   ├── __init__.py
+│   │   Exports chat_router, models_router, and monitoring_router.
+│   │
+│   ├── chat.py
+│   │   Chat completion endpoints with streaming support.
+│   │   Handles /api/chat and /api/models with retry logic and DNS refresh.
+│   │
+│   ├── models.py
+│   │   Model management endpoints.
+│   │   Routes: /api/model-status, /api/switch-model, /api/download-model, /api/delete-model.
+│   │
+│   └── monitoring.py
+│       Health and metrics endpoints.
+│       Routes: /api/healthz, /metrics, /api/restart-api, and root endpoint.
+│
+└── /utils (Utility Functions)
+    ├── __init__.py
+    │   Exports streaming and HTTP client utilities.
+    │
+    ├── http_client.py
+    │   HTTP client management with retry logic and DNS refresh capabilities.
+    │   Provides singleton client and fresh client creation for DNS resolution.
+    │
+    └── streaming.py
+        SSE streaming utilities for forwarding vLLM responses to clients.
+        Handles OpenAI-compatible streaming format with error handling.
+
+
+================================================================================
+BENCH FOLDER - /bench
+================================================================================
+
+Performance benchmarking tools for measuring API latency and throughput.
+
+/bench
+├── latency.py
+│   Benchmark script measuring Time to First Byte (TTFB), end-to-end latency,
+│   tokens per second, and GPU VRAM usage. Supports warmup runs and statistics.
+│
+└── requirements.txt
+    Dependencies for benchmarking (httpx).
+
+
+================================================================================
+DEPLOY FOLDER - /deploy
+================================================================================
+
+Deployment configurations and monitoring setup.
+
+/deploy
+└── /metrics
+    ├── README.md
+    │   Prometheus metrics documentation.
+    │   Explains metrics endpoints, key metrics, example queries, and alerting setup.
+    │
+    └── prometheus.yml
+        Prometheus configuration for scraping vLLM and API metrics.
+        Configures scrape intervals, targets, and service labels.
+
+
+================================================================================
+DOCS FOLDER - /docs
+================================================================================
+
+Comprehensive project documentation organized by topic.
+
+/docs
+├── API_ENDPOINTS.md
+│   Complete API documentation optimized for N8n HTTP Request nodes.
+│   Documents all endpoints with curl examples, N8n settings, and workflows.
+│
+├── README.md
+│   Documentation hub with links to all guides organized by category.
+│   Includes user docs, setup guides, developer docs, and changelog links.
+│
+├── /api (empty)
+│   Placeholder for future API-specific documentation.
+│
+├── /changelog
+│   ├── CHANGELOG.md
+│   │   Version history with Omarchy theme integration, configuration system,
+│   │   and file watching features. Lists all theme properties and config options.
+│   │
+│   └── v1.0.0.md
+│       Model management system overhaul documentation.
+│       Describes migration from ~/.cache to ./models, new endpoints, and benefits.
+│
+├── /dev (Developer Documentation)
+│   ├── contributing.md
+│   │   Contributing guidelines, development setup, code style, and testing instructions.
+│   │
+│   ├── huggingface-api-integration.md
+│   │   HuggingFace API usage guide for listing models, checking gated status,
+│   │   and implementing model search functionality.
+│   │
+│   └── /debugging
+│       ├── temperature.md
+│       │   Temperature parameter debugging guide.
+│       │   How to verify temperature setting is applied through logs and testing.
+│       │
+│       └── temperature-tracking.md
+│           Temperature parameter flow documentation showing pipeline from TUI to vLLM.
+│           Lists all logging points and verification steps.
+│
+├── /services
+│   └── vllm.md
+│       vLLM service configuration documentation.
+│       Docker image info, model configuration, and switching instructions.
+│
+├── /setup (Setup Guides)
+│   ├── first-time-setup.md
+│   │   Complete first-time setup guide with step-by-step instructions.
+│   │   Covers environment config, model download, and service startup.
+│   │
+│   ├── gpu-memory.md
+│   │   GPU memory configuration guide for AMD Ryzen AI Max+ 395.
+│   │   TUI settings, manual configuration, and N8n integration.
+│   │
+│   ├── gpu-setup.md
+│   │   Generic GPU setup guide (NVIDIA-focused).
+│   │   Driver installation, container toolkit, and verification steps.
+│   │
+│   ├── model-management.md
+│   │   Model management guide for the ./models directory structure.
+│   │   Commands for checking status, downloading, listing, and deleting models.
+│   │
+│   ├── model-switching.md
+│   │   Runtime model switching guide.
+│   │   Flow diagram, API endpoint usage, and frontend instructions.
+│   │
+│   └── rocm.md
+│       ROCm setup for AMD GPUs (Ryzen AI Max+ 395).
+│       Installation verification, user permissions, Docker testing, and configuration.
+│
+└── /user (End-User Documentation)
+    ├── keyboard-shortcuts.md
+    │   Quick reference for commands, endpoints, and environment variables.
+    │   Table of make commands and API endpoint summary.
+    │
+    └── themes.md
+        Theme system documentation.
+        Configuration options, theme file format, color properties, and examples.
+
+
+================================================================================
+FRONTEND FOLDER - /frontend
+================================================================================
+
+Terminal UI chat interface built with Textual, featuring BTOP++-inspired design
+and Omarchy theme integration.
+
+/frontend
+├── .dockerignore
+│   Excludes cache, configs, test files from Docker builds.
+│
+├── Dockerfile
+│   Dockerfile for containerized frontend (if needed).
+│
+├── README.md
+│   Frontend documentation with features, installation, configuration, and usage.
+│   Includes ASCII art screenshots and keyboard shortcuts.
+│
+├── TuivLLM.py
+│   Main Textual application implementing the chat interface.
+│   Handles theme watching, chat messages, input processing, and settings modal.
+│   Includes OmarchyThemeWatcher for live theme reloading.
+│
+├── config.py
+│   Configuration constants for API URLs, timeouts, UI settings, and colors.
+│   Loads environment variables and provides defaults.
+│
+├── requirements.txt
+│   Python dependencies: textual, httpx, rich, python-dotenv, watchdog, psutil.
+│
+├── run.sh
+│   Standalone bash script to run the TUI frontend.
+│   Loads .env variables, sets defaults, and starts the application.
+│
+├── settings.py
+│   Settings management class storing user preferences in ~/.config/tuivllm/settings.json.
+│   Manages temperature, max_tokens, GPU memory, endpoint, and selected model.
+│
+├── tuivllm.conf.example
+│   Example configuration file in btop style.
+│   Defines theme, display options, timestamps, and keybindings.
+│
+├── version.py
+│   Version information for Talk-Tuah (currently 0.0.2).
+│
+├── /styles (Textual CSS Stylesheets)
+│   ├── README.md
+│   │   Explanation of the Textual CSS (TCSS) styling system.
+│   │
+│   ├── chat.tcss
+│   │   Styles for chat messages, containers, and scroll areas.
+│   │
+│   ├── footer.tcss
+│   │   Styles for footer buttons and keybinding display.
+│   │
+│   ├── main.tcss
+│   │   Main layout styles for the application.
+│   │
+│   └── settings.tcss
+│       Styles for settings modal, sliders, and option lists.
+│
+├── /themes
+│   ├── COLOR_PALETTE.md
+│   │   Documentation of the color palette and gradient system.
+│   │
+│   └── terminal.theme
+│       Default fallback theme using ANSI terminal colors.
+│       Defines all theme properties with ANSI color names.
+│
+├── /utils (Utility Modules)
+│   ├── __init__.py
+│   │   Exports utility functions for markup, theme, and API client.
+│   │
+│   ├── api_client.py
+│   │   LLM API client handling chat completions and model queries.
+│   │   Integrates with settings for endpoint and model selection.
+│   │
+│   ├── markup.py
+│   │   Text markup utilities for stripping Rich markup tags.
+│   │
+│   ├── theme.py
+│   │   Theme loading and management with Omarchy integration.
+│   │   Loads btop.theme files and provides color configuration.
+│   │
+│   └── theme_helpers.py
+│       Color interpolation and gradient position calculation.
+│       Used for creating smooth color transitions in the UI.
+│
+└── /widgets (Textual Widget Components)
+    ├── __init__.py
+    │   Exports all custom widgets for the application.
+    │
+    ├── download_progress_bar.py
+    │   Progress bar widget for model downloads.
+    │
+    ├── /chat
+    │   ├── __init__.py
+    │   │   Exports ChatMessage widget.
+    │   │
+    │   └── chat_message.py
+    │       Chat message rendering widget.
+    │       Displays user/AI messages with timestamps and formatting.
+    │
+    ├── /layout (Layout Components)
+    │   ├── __init__.py
+    │   │   Exports border, footer, and status bar widgets.
+    │   │
+    │   ├── borders.py
+    │   │   Container and side border widgets for visual structure.
+    │   │
+    │   ├── footer.py
+    │   │   Custom footer with keybinding buttons and spacers.
+    │   │
+    │   ├── modal_footer.py
+    │   │   Footer for modal dialogs.
+    │   │
+    │   └── status_bar.py
+    │       Status bar showing connection state, endpoint, and system info.
+    │
+    └── /settings (Settings Modal Components)
+        ├── __init__.py
+        │   Exports all settings-related widgets.
+        │
+        ├── api_client.py
+        │   API client for settings interactions.
+        │
+        ├── base_slider.py
+        │   Base slider widget class for reusable slider components.
+        │
+        ├── download_manager.py
+        │   Download management widget for model downloads.
+        │
+        ├── download_started.py
+        │   Download started notification widget.
+        │
+        ├── endpoint_widget.py
+        │   Endpoint selection and configuration widget.
+        │
+        ├── gpu_memory_slider.py
+        │   GPU memory allocation slider (10-95%).
+        │
+        ├── huggingface_models.py
+        │   HuggingFace model browser and search widget.
+        │
+        ├── max_tokens_slider.py
+        │   Max tokens slider for output length control.
+        │
+        ├── model_manager.py
+        │   Model management interface for switching and downloading.
+        │
+        ├── model_option.py
+        │   Model selection option widget with ModelSelected message.
+        │
+        ├── settings_modal.py
+        │   Main settings modal container coordinating all settings widgets.
+        │
+        ├── temperature_slider.py
+        │   Temperature slider for controlling randomness (0.0-2.0).
+        │
+        ├── theme_option.py
+        │   Theme selection widget (for future multi-theme support).
+        │
+        └── utils.py
+            Utility functions for settings widgets.
+
+
+================================================================================
+MODELS FOLDER - /models
+================================================================================
+
+Storage location for downloaded HuggingFace models in cache format.
+
+/models
+├── .gitkeep
+│   Keeps the models directory in git while ignoring model files.
+│
+├── README.md
+│   Models directory documentation explaining structure and management.
+│   Describes HuggingFace Hub format and model operations.
+│
+└── /hub
+    HuggingFace cache directory containing downloaded models.
+    Structure: models--{org}--{model-name}/ with snapshots/ and refs/ subdirs.
+
+
+================================================================================
+SCRIPTS FOLDER - /scripts
+================================================================================
+
+Utility scripts for setup, management, and development tasks.
+
+/scripts
+├── .env (not in git)
+│   Local environment file for script testing.
+│
+├── .env.bak
+│   Backup of environment file.
+│
+├── /dev (Development Scripts)
+│   ├── test_api_temperature.sh
+│   │   Script to test temperature parameter through the API.
+│   │   Sends requests with different temperature values and checks responses.
+│   │
+│   ├── test_model_management.sh
+│   │   Model management integration test script.
+│   │   Tests model listing, downloading, switching, and deletion.
+│   │
+│   ├── test_temperature.py
+│   │   Python script to verify temperature setting in settings.json.
+│   │   Reads and validates temperature configuration.
+│   │
+│   ├── verify_rocm.sh
+│   │   ROCm installation verification script for AMD GPUs.
+│   │   Checks ROCm version, GPU detection, permissions, and Docker access.
+│   │
+│   └── verify_setup.sh
+│       Complete setup verification script.
+│       Checks Docker, .env file, GPU access, services, and API endpoints.
+│
+├── /management (Model Management Scripts)
+│   ├── delete_model.sh
+│   │   Interactive script to delete downloaded models.
+│   │   Checks if model is current, confirms deletion, and restarts services.
+│   │
+│   ├── download_model.sh
+│   │   Model download script using huggingface-cli.
+│   │   Downloads to ./models, updates .env, and tracks progress.
+│   │
+│   └── sync_settings.py
+│       Python script to sync TUI settings (GPU memory) to .env file.
+│       Reads from ~/.config/tuivllm/settings.json and updates .env.
+│
+└── /setup (Initial Setup Scripts)
+    └── setup_first_model.sh
+        First-time model setup wizard.
+        Scans downloaded models, prompts for selection, updates .env, and starts vLLM.
+
+
+================================================================================
+TESTS FOLDER - /tests
+================================================================================
+
+Automated testing suite for API and integration testing.
+
+/tests
+├── conftest.py
+│   Pytest configuration and fixtures.
+│   Provides api_url, api_key, model_name, auth_headers, and async client fixtures.
+│
+├── requirements.txt
+│   Test dependencies: pytest, pytest-asyncio, httpx.
+│
+└── /integration
+    └── test_api.py
+        Integration tests for API endpoints.
+        Tests health check, model listing, and chat completion endpoints.
+
+
+================================================================================
+SUMMARY
+================================================================================
+
+Total Folders: 24
+Total Files: 150+ (excluding venv and generated files)
+
+Key Components:
+- Backend API: FastAPI proxy with authentication and model management
+- Frontend: Textual TUI with Omarchy theme integration
+- Documentation: Comprehensive guides for setup, usage, and development
+- Scripts: Automation for setup, model management, and testing
+- Tests: Integration tests for API validation
+- Deployment: Monitoring and metrics configuration
+
+Technology Stack:
+- Backend: Python 3.11, FastAPI, Docker, ROCm/vLLM
+- Frontend: Python 3.13, Textual, Rich, httpx
+- Infrastructure: Docker Compose, Prometheus
+- AI: vLLM with HuggingFace models on AMD GPU
+
+================================================================================
+END OF PROJECT STRUCTURE DOCUMENTATION
+================================================================================

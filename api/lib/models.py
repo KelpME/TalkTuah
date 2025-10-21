@@ -1,6 +1,7 @@
 """Model management operations"""
 import os
 import logging
+import time
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
@@ -13,13 +14,31 @@ class ModelService:
     def __init__(self, models_dir: str = "/workspace/models/hub"):
         self.models_dir = Path(models_dir)
         self.env_path = Path("/workspace/.env")
+        # Simple TTL cache for model list (5 minutes)
+        self._model_cache = None
+        self._cache_timestamp = 0
+        self._cache_ttl = 300  # 5 minutes in seconds
     
-    def get_downloaded_models(self) -> List[str]:
+    def get_downloaded_models(self, use_cache: bool = True) -> List[str]:
         """
         Get list of downloaded models from HuggingFace cache.
         
+        Uses 5-minute TTL cache to avoid repeated filesystem scans.
+        
+        Args:
+            use_cache: If False, bypass cache and scan filesystem
+        
         Returns list of model IDs in format: org/model-name
         """
+        # Check cache
+        if use_cache and self._model_cache is not None:
+            cache_age = time.time() - self._cache_timestamp
+            if cache_age < self._cache_ttl:
+                logger.debug(f"Returning cached model list (age: {cache_age:.1f}s)")
+                return self._model_cache
+        
+        # Cache miss - scan filesystem
+        logger.debug("Scanning models directory...")
         downloaded_models = []
         
         if not self.models_dir.exists():
@@ -31,7 +50,17 @@ class ModelService:
                 model_name = item.name.replace("models--", "").replace("--", "/", 1)
                 downloaded_models.append(model_name)
         
+        # Update cache
+        self._model_cache = downloaded_models
+        self._cache_timestamp = time.time()
+        
         return downloaded_models
+    
+    def invalidate_cache(self):
+        """Invalidate model list cache (call after download/delete)"""
+        self._model_cache = None
+        self._cache_timestamp = 0
+        logger.debug("Model cache invalidated")
     
     async def get_model_status(self, vllm_service) -> Dict[str, Any]:
         """
@@ -128,6 +157,9 @@ class ModelService:
         
         # Update .env file
         self.update_env_file(model_id)
+        
+        # Invalidate model cache since we're switching models
+        self.invalidate_cache()
         
         # Recreate vLLM container
         await docker_service.recreate_vllm_container()

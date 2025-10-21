@@ -173,3 +173,34 @@ async def restart_api(endpoint: str = LMSTUDIO_URL) -> dict:
         return {"status": "error", "message": str(e)}
     
     return {"status": "error", "message": "Failed to restart API"}
+
+
+async def delete_model(model_id: str, endpoint: str = LMSTUDIO_URL) -> dict:
+    """
+    Delete a downloaded model via API.
+    API runs in container with proper permissions.
+    """
+    try:
+        base_url = endpoint.rstrip('/')
+        if not base_url.endswith('/api'):
+            base_url = f"{base_url}/api"
+        delete_url = f"{base_url}/delete-model"
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.delete(
+                delete_url,
+                params={"model_id": model_id},
+                headers={"Authorization": f"Bearer {VLLM_API_KEY}"}
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 404:
+                return {"status": "error", "message": "Model not found"}
+            else:
+                error_detail = response.json().get('detail', 'Unknown error')
+                return {"status": "error", "message": error_detail}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    
+    return {"status": "error", "message": "Failed to delete model"}

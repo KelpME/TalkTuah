@@ -5,15 +5,17 @@ from utils.theme import get_theme_loader
 from pathlib import Path
 from version import __version__
 from config import LMSTUDIO_URL, VLLM_API_KEY
-from settings import get_settings
+from user_preferences import get_settings
 from ..layout.borders import SideBorder
 from ..layout.modal_footer import ModalFooter
 from .model_manager import ModelManager, ModelDownloadRequested
-from .model_option import ModelOption, ModelSelected
+from .model_option import ModelOption, ModelSelected, ModelDeleteRequested
 from .theme_option import ThemeOption, ThemeSelected
-from .temperature_slider import TemperatureSlider
-from .gpu_memory_slider import GPUMemorySlider, GPUMemoryChanged
-from .max_tokens_slider import MaxTokensSlider, MaxTokensChanged
+from .sliders import (
+    TemperatureSlider,
+    GPUMemorySlider, GPUMemoryChanged,
+    MaxTokensSlider, MaxTokensChanged
+)
 from .huggingface_models import get_model_info
 from .endpoint_widget import EndpointLine
 from .download_manager import DownloadManager
@@ -269,6 +271,43 @@ class SettingsModal(ModalScreen):
                 
         except Exception as e:
             self.notify(f"Error switching model: {str(e)}", severity="error", timeout=5)
+    
+    async def on_model_delete_requested(self, message: ModelDeleteRequested) -> None:
+        """Handle model deletion request"""
+        model_name = message.model_name
+        
+        # Confirm deletion
+        self.notify(
+            f"Deleting {model_name}...",
+            severity="warning",
+            timeout=3
+        )
+        
+        try:
+            endpoint = self.settings.get("endpoint", LMSTUDIO_URL)
+            result = await api_client.delete_model(model_name, endpoint)
+            
+            if result.get("status") == "deleted":
+                self.notify(
+                    f"✓ Model deleted: {model_name}",
+                    severity="information",
+                    timeout=5
+                )
+                # Refresh model list
+                await self.refresh_model_lists()
+            else:
+                error_msg = result.get("message", "Unknown error")
+                self.notify(
+                    f"✗ Failed to delete: {error_msg}",
+                    severity="error",
+                    timeout=5
+                )
+        except Exception as e:
+            self.notify(
+                f"✗ Error deleting model: {str(e)}",
+                severity="error",
+                timeout=5
+            )
     
     def on_theme_selected(self, message: ThemeSelected) -> None:
         """Handle theme selection"""

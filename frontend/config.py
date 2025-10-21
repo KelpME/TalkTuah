@@ -12,19 +12,6 @@ LMSTUDIO_TIMEOUT = 60.0
 LMSTUDIO_MAX_TOKENS = 500
 LMSTUDIO_TEMPERATURE = 0.7
 
-# Dashboard Configuration
-REFRESH_INTERVAL = 5  # seconds
-MAX_METRICS_PER_APP = 100
-CHART_DATA_POINTS = 20  # Number of points to show in charts
-
-# UI Configuration
-CHART_WIDTH = 50
-CHART_HEIGHT = 15
-BAR_CHART_MAX_WIDTH = 30
-
-# Data Retention
-METRICS_RETENTION_LIMIT = 100  # Keep last N entries per app
-
 # LLM System Prompt
 LLM_SYSTEM_PROMPT = """You are a helpful AI assistant. 
 Be concise, accurate, and friendly in your responses.

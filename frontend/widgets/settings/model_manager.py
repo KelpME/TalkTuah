@@ -5,7 +5,7 @@ from textual.containers import Vertical, Horizontal
 from textual.message import Message
 from utils.theme import get_theme_loader
 from config import LMSTUDIO_URL, VLLM_API_KEY
-from settings import get_settings
+from user_preferences import get_settings
 from utils.markup import strip_markup
 from ..layout.borders import SideBorder
 from .huggingface_models import get_autocomplete_suggestions, format_model_suggestion, POPULAR_MODELS
@@ -32,16 +32,21 @@ class ModelListItem(Static, can_focus=True):
         # Format with VRAM info
         display_text = format_model_suggestion(self.model_id)
         
-        # Add double-click hint
+        # Show appropriate hint based on state
         if self.click_count == 1:
+            # First click - show confirmation hint
             hint = " [dim](click again to download)[/dim]"
+        elif self.has_focus:
+            # Focused - show Enter key hint
+            hint = " [dim](Enter to download)[/dim]"
         else:
             hint = ""
         
         display_with_hint = display_text + hint
         padding = max(0, self.inner_width - len(strip_markup(display_with_hint)))
         
-        if self.has_focus or self.click_count == 1:
+        # Highlight if focused
+        if self.has_focus:
             return f"[{ai_color}]│ [{user_color}]▶ {display_with_hint}[/]{' ' * padding} │[/]"
         else:
             return f"[{ai_color}]│ [dim]{display_text}[/dim]{' ' * padding} │[/]"

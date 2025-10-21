@@ -1,9 +1,13 @@
-"""Base slider widget with configurable range and display"""
+"""Slider widgets for settings - consolidated from base_slider, temperature_slider, max_tokens_slider, gpu_memory_slider"""
 
 from textual.widgets import Static
 from textual.message import Message
 from utils.theme import get_theme_loader
 
+
+# ============================================================================
+# Messages
+# ============================================================================
 
 class SliderValueChanged(Message):
     """Message when slider value changes"""
@@ -12,6 +16,34 @@ class SliderValueChanged(Message):
         super().__init__()
         self.value = value
 
+
+class TemperatureChanged(Message):
+    """Message when temperature value changes"""
+    
+    def __init__(self, value: float):
+        super().__init__()
+        self.value = value
+
+
+class MaxTokensChanged(Message):
+    """Message when max tokens value changes"""
+    
+    def __init__(self, value: int):
+        super().__init__()
+        self.value = value
+
+
+class GPUMemoryChanged(Message):
+    """Message when GPU memory value changes"""
+    
+    def __init__(self, value: float):
+        super().__init__()
+        self.value = value
+
+
+# ============================================================================
+# Base Slider
+# ============================================================================
 
 class BaseSlider(Static, can_focus=True):
     """Interactive slider widget with configurable parameters"""
@@ -113,3 +145,77 @@ class BaseSlider(Static, can_focus=True):
             self.value = min(self.max_value, self.value + self.step)
             self.refresh()
             self.post_message(SliderValueChanged(self.value))
+
+
+# ============================================================================
+# Specific Sliders
+# ============================================================================
+
+class TemperatureSlider(BaseSlider):
+    """Interactive temperature slider widget (0.0 to 2.0)"""
+    
+    def __init__(self, initial_value: float = 0.7, inner_width: int = 66):
+        super().__init__(
+            initial_value=initial_value,
+            min_value=0.0,
+            max_value=2.0,
+            label="Temperature",
+            format_func=lambda v: f"{v:.1f}",
+            step=0.1,
+            inner_width=inner_width,
+            width_offset=20
+        )
+    
+    def on_key(self, event) -> None:
+        """Handle arrow keys and post TemperatureChanged message"""
+        if event.key in ("left", "right"):
+            super().on_key(event)
+            self.post_message(TemperatureChanged(self.value))
+
+
+class MaxTokensSlider(BaseSlider):
+    """Interactive max tokens slider widget"""
+    
+    def __init__(self, initial_value: int = 2048, max_value: int = 4096, inner_width: int = 66):
+        # Store original values as integers
+        self._initial_int = initial_value
+        self._max_int = max_value
+        
+        super().__init__(
+            initial_value=float(initial_value),
+            min_value=128.0,  # Minimum reasonable token count
+            max_value=float(max_value),
+            label="Max Tokens",
+            format_func=lambda v: f"{int(v)}",
+            step=128.0,  # Increment by 128 tokens
+            inner_width=inner_width,
+            width_offset=23
+        )
+    
+    def on_key(self, event) -> None:
+        """Handle arrow keys and post MaxTokensChanged message"""
+        if event.key in ("left", "right"):
+            super().on_key(event)
+            self.post_message(MaxTokensChanged(int(self.value)))
+
+
+class GPUMemorySlider(BaseSlider):
+    """Interactive GPU memory allocation slider widget (10% to 95%)"""
+    
+    def __init__(self, initial_value: float = 0.75, inner_width: int = 66):
+        super().__init__(
+            initial_value=initial_value,
+            min_value=0.1,
+            max_value=0.95,
+            label="GPU Memory",
+            format_func=lambda v: f"{int(v * 100)}%",
+            step=0.05,
+            inner_width=inner_width,
+            width_offset=25
+        )
+    
+    def on_key(self, event) -> None:
+        """Handle arrow keys and post GPUMemoryChanged message"""
+        if event.key in ("left", "right"):
+            super().on_key(event)
+            self.post_message(GPUMemoryChanged(self.value))

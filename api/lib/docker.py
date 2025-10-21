@@ -4,6 +4,7 @@ import logging
 import subprocess
 import os
 from typing import Dict, Any
+from config import settings
 
 # Import docker at module level
 try:
@@ -72,8 +73,8 @@ class DockerService:
                 
                 client = docker.from_env()
                 try:
-                    api_container = client.containers.get("vllm-proxy-api")
-                    logger.info("Restarting API container to flush DNS cache...")
+                    api_container = client.containers.get(settings.api_container_name)
+                    logger.debug(f"Restarting {settings.api_container_name} to flush DNS cache...")
                     api_container.restart(timeout=10)
                     logger.info("API container restarted - DNS cache flushed")
                 finally:
@@ -83,7 +84,7 @@ class DockerService:
         
         # Start the restart task in background
         asyncio.create_task(delayed_restart())
-        logger.info(f"Scheduled API restart in {delay_seconds} seconds")
+        logger.debug(f"Scheduled API restart in {delay_seconds} seconds")
     
     async def restart_api_container_manual(self, delay_seconds: int = 30):
         """
@@ -101,8 +102,8 @@ class DockerService:
                 
                 client = docker.from_env()
                 try:
-                    api_container = client.containers.get("vllm-proxy-api")
-                    logger.info("Restarting API container...")
+                    api_container = client.containers.get(settings.api_container_name)
+                    logger.debug(f"Restarting {settings.api_container_name}...")
                     api_container.restart(timeout=10)
                 finally:
                     client.close()

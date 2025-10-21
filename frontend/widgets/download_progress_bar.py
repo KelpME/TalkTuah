@@ -6,7 +6,7 @@ from utils.theme import get_theme_loader
 from datetime import datetime
 import httpx
 from config import LMSTUDIO_URL, VLLM_API_KEY
-from settings import get_settings
+from user_preferences import get_settings
 
 
 class DownloadProgressBar(Static):

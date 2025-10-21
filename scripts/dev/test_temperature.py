@@ -4,7 +4,7 @@
 import sys
 sys.path.insert(0, 'frontend')
 
-from settings import get_settings
+from user_preferences import get_settings
 
 settings = get_settings()
 temp = settings.get("temperature", 0.7)

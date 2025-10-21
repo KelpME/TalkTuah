@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     upstream_timeout: int = 300
     stream_timeout: int = 600
     
+    # Docker Container Names
+    vllm_container_name: str = "vllm-server"
+    api_container_name: str = "vllm-proxy-api"
+    
     class Config:
         env_file = ".env"
         case_sensitive = False

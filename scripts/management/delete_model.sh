@@ -1,5 +1,5 @@
 #!/bin/bash
-# Delete a model from the models directory
+# Delete a model via API (handles permissions correctly)
 
 set -e
 
@@ -16,7 +16,14 @@ if [ -z "$MODEL_ID" ]; then
     exit 1
 fi
 
-# Convert model ID to directory name
+# Get API key from .env
+API_KEY=$(grep "^PROXY_API_KEY=" .env 2>/dev/null | cut -d'=' -f2)
+if [ -z "$API_KEY" ]; then
+    echo "Error: PROXY_API_KEY not found in .env"
+    exit 1
+fi
+
+# Convert model ID to directory name for size check
 MODEL_DIR_NAME="models--$(echo "$MODEL_ID" | sed 's/\//--/g')"
 MODEL_PATH="./models/hub/$MODEL_DIR_NAME"
 
@@ -38,7 +45,6 @@ echo "Delete Model"
 echo "=========================================="
 echo ""
 echo "Model: $MODEL_ID"
-echo "Path: $MODEL_PATH"
 echo "Size: $MODEL_SIZE"
 echo ""
 
@@ -48,9 +54,7 @@ if [ "$CURRENT_MODEL" = "$MODEL_ID" ]; then
     echo "⚠️  WARNING: This is your current DEFAULT_MODEL!"
     echo ""
     echo "If you delete this model, vLLM will fail to start."
-    echo "You should:"
-    echo "  1. Run 'make setup' to select a different model first"
-    echo "  2. Then delete this model"
+    echo "You should switch models first in the settings."
     echo ""
     read -p "Continue anyway? (y/N): " -n 1 -r
     echo
@@ -69,46 +73,33 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
 fi
 
 echo ""
-echo "Stopping containers..."
-docker compose stop vllm api
+echo "Deleting model via API..."
 
-echo ""
-echo "Deleting model..."
-# Model files are owned by root (from Docker), need sudo
-if [ -w "$MODEL_PATH" ]; then
-    rm -rf "$MODEL_PATH"
-else
-    echo "Model files are owned by root, using sudo..."
-    sudo rm -rf "$MODEL_PATH"
-fi
+# Call API to delete model (API runs in container with proper permissions)
+RESPONSE=$(curl -s -w "\n%{http_code}" -X DELETE \
+    "http://localhost:8787/api/delete-model?model_id=$MODEL_ID" \
+    -H "Authorization: Bearer $API_KEY")
 
-# Check if deletion was successful
-if [ ! -d "$MODEL_PATH" ]; then
+HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+BODY=$(echo "$RESPONSE" | head -n-1)
+
+if [ "$HTTP_CODE" = "200" ]; then
     echo ""
-    echo "✓ Model deleted: $MODEL_ID"
+    echo "✓ Model deleted successfully: $MODEL_ID"
     echo "  Freed: $MODEL_SIZE"
     echo ""
-else
+    echo "Note: You may want to restart vLLM if this was the active model:"
+    echo "  docker compose restart vllm"
+elif [ "$HTTP_CODE" = "404" ]; then
     echo ""
-    echo "✗ Failed to delete model completely"
-    echo "Some files may remain. Try: sudo rm -rf $MODEL_PATH"
-    echo ""
+    echo "✗ Model not found in API"
+    echo "Response: $BODY"
     exit 1
-fi
-
-# Ask to restart
-read -p "Restart containers now? (Y/n): " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-    echo ""
-    echo "Starting containers..."
-    docker compose up -d
-    echo ""
-    echo "✓ Containers restarted"
 else
     echo ""
-    echo "To restart later, run:"
-    echo "  docker compose up -d"
+    echo "✗ Failed to delete model (HTTP $HTTP_CODE)"
+    echo "Response: $BODY"
+    exit 1
 fi
 
 echo ""
